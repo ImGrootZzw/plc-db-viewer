@@ -1,0 +1,12 @@
+DATA_BLOCK "DB_Line"
+{ S7_Optimized_Access := 'FALSE' }
+VERSION : 0.1
+   VAR
+      Motors : Array[1..3] of "UDT_Motor";   // 三台电机
+      Total : Int;   // 总数
+      StartTime : DTL;
+   END_VAR
+BEGIN
+   "DB_Line".Motors[2].Current := 6.5;
+   "DB_Line".Motors[1].Run := TRUE;
+END_DATA_BLOCK

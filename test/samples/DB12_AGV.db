@@ -1,0 +1,19 @@
+DATA_BLOCK DB 12
+TITLE =AGV station data
+VERSION : 0.1
+
+  STRUCT
+   Station : ARRAY [1..8] OF
+      STRUCT
+         Occupied : BOOL ;	(* 有货 *)
+         PalletNo : DINT ;	(* 托盘号 *)
+         Height : REAL ;	(* 高度 mm *)
+      END_STRUCT ;
+   Total : INT ;
+   UpdateTime : DATE_AND_TIME ;
+   Code : ARRAY [0..1, 1..3] OF INT ;
+  END_STRUCT ;
+
+BEGIN
+
+END_DATA_BLOCK

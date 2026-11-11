@@ -1,0 +1,8 @@
+TYPE "UDT_Motor"
+VERSION : 0.1
+   STRUCT
+      Run : Bool;   // 运行中
+      Current : Real;   // 电流 A
+      ErrCode : Word;   // 故障码
+   END_STRUCT;
+END_TYPE

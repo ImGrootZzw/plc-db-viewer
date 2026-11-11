@@ -1,0 +1,22 @@
+DATA_BLOCK "DB_Pallet"
+{ S7_Optimized_Access := 'FALSE' }
+VERSION : 0.1
+NON_RETAIN
+   VAR
+      Ready : Bool;   // 就绪
+      Fault : Bool;   // 故障
+      Mode : Int := 2;   // 运行模式
+      Speed : Real := 12.5;   // 速度 m/min
+      Name : String[20] := 'Conveyor-01';   // 设备名
+      Count : DInt;   // 计数
+      Tags : Array[1..4] of Bool;
+      Temps : Array[0..2] of Real := 1.0, 2.0, 3.0;
+      Motor : Struct
+         Run : Bool;   // 运行中
+         Current : Real := 4.25;   // 电流 A
+         ErrCode : Word;
+      END_STRUCT;
+   END_VAR
+BEGIN
+   "DB_Pallet".Count := 100;
+END_DATA_BLOCK

@@ -1,0 +1,2988 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PLC 数据块解析器 · 西门子 DB</title>
+<style>
+:root{
+  --ink:#12191B; --ink-soft:#3A4649; --muted:#66736F;
+  --paper:#E6EAE7; --surface:#FBFCFB; --panel:#FFFFFF;
+  --line:#C7CFCB; --line-soft:#E2E8E5;
+  --accent:#0B6B62; --accent-ink:#084F49; --accent-soft:#DCEBE7;
+  --amber:#A9660F; --amber-soft:#F3E7D3; --red:#A3372E;
+  --sans:"Segoe UI","PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono","SF Mono","Roboto Mono",Consolas,"Liberation Mono",monospace;
+  --row:30px;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font:13px/1.5 var(--sans);
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+h1,h2,h3,p{margin:0}
+
+/* ---------------------------------------------------------------- topbar */
+.topbar{
+  height:56px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 18px 0 16px; background:#101A1C; color:#E9EFED;
+  border-bottom:1px solid #0A1113;
+}
+.brand{display:flex; align-items:center; gap:11px; min-width:0}
+.mark{
+  width:26px; height:26px; flex:0 0 auto; border:1px solid #2C4A47;
+  display:grid; place-items:center; background:#13282A;
+}
+.mark svg{display:block}
+.brand h1{font-size:14px; font-weight:600; letter-spacing:.01em; line-height:1.2}
+.brand p{font-size:11px; color:#8FA5A0; line-height:1.2; margin-top:2px}
+.top-actions{display:flex; align-items:center; gap:8px}
+.top-actions .btn{border-color:#33504D; background:#17282A; color:#DDE7E4}
+.top-actions .btn:hover{background:#1E3335; border-color:#3D5C58}
+.btn{
+  height:30px; padding:0 12px; border:1px solid var(--line); border-radius:2px;
+  background:var(--panel); color:var(--ink); font-size:12.5px; display:inline-flex;
+  align-items:center; gap:6px; white-space:nowrap; transition:background .12s,border-color .12s;
+}
+.btn:hover{background:#F3F6F4; border-color:#AFBAB5}
+.btn:focus-visible, .seg-btn:focus-visible, .tab:focus-visible, .row-disclosure:focus-visible{
+  outline:2px solid var(--accent); outline-offset:1px;
+}
+.btn[disabled]{opacity:.45; cursor:default}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+.btn.primary:hover{background:var(--accent-ink); border-color:var(--accent-ink)}
+.btn.sm{height:26px; padding:0 9px; font-size:12px}
+
+/* ---------------------------------------------------------------- shell */
+.shell{display:grid; grid-template-columns:296px minmax(0,1fr); height:calc(100vh - 56px)}
+.rail{
+  border-right:1px solid var(--line); background:#F2F5F3;
+  overflow-y:auto; padding:14px 0 40px;
+}
+.rail-block{padding:0 16px; margin-bottom:18px}
+.rail-block + .rail-block{border-top:1px solid var(--line-soft); padding-top:14px}
+.rail h2{
+  font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.04em;
+  margin-bottom:8px;
+}
+.tiny{font-size:12px; color:var(--muted); line-height:1.6}
+
+.file-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px}
+.file-item{
+  width:100%; text-align:left; border:0; background:transparent; border-radius:2px;
+  padding:7px 8px 7px 10px; display:flex; align-items:baseline; gap:8px;
+  border-left:2px solid transparent;
+}
+.file-item:hover{background:#E7EDEA}
+.file-item.active{background:#E2EDEA; border-left-color:var(--accent)}
+.file-item .fname{
+  font-size:12.5px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  flex:1 1 auto;
+}
+.file-item .fmeta{font-family:var(--mono); font-size:10.5px; color:var(--muted); flex:0 0 auto}
+.block-list{list-style:none; margin:2px 0 6px 10px; padding:0; display:flex; flex-direction:column; gap:1px}
+.block-item{
+  width:100%; text-align:left; border:0; background:transparent; padding:5px 8px;
+  font-size:12px; color:var(--ink-soft); border-radius:2px;
+  display:flex; justify-content:space-between; gap:8px;
+}
+.block-item:hover{background:#E7EDEA}
+.block-item.active{background:#DCEBE7; color:var(--accent-ink); font-weight:600}
+.block-item .bnum{font-family:var(--mono); font-size:10.5px; color:var(--muted)}
+.block-item.active .bnum{color:var(--accent-ink)}
+
+.kv{display:grid; grid-template-columns:auto 1fr; gap:5px 12px; font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0; text-align:right; font-family:var(--mono); font-size:11.5px}
+
+.warn-list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+.warn-list li{
+  font-size:11.5px; color:#6B4A18; background:var(--amber-soft);
+  border-left:2px solid var(--amber); padding:6px 8px; line-height:1.45;
+}
+.warn-list li.err{color:#6B221C; background:#F3DEDB; border-left-color:var(--red)}
+.warn-list li .ln{font-family:var(--mono); opacity:.7; margin-left:4px}
+
+/* ---------------------------------------------------------------- workspace */
+.workspace{padding:18px 22px 34px; overflow-y:auto; background:var(--surface)}
+.doc{max-width:1500px}
+
+.titleblock{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr));
+  gap:1px; background:var(--line); border:1px solid var(--line);
+  margin-bottom:16px;
+}
+.tb-cell{background:var(--panel); padding:8px 11px 9px; min-width:0}
+.tb-cell .lbl{font-size:10.5px; color:var(--muted); letter-spacing:.02em; margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.tb-cell .val{font-family:var(--mono); font-size:14px; font-weight:600; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.tb-cell .val.sans{font-family:var(--sans); font-size:13.5px; font-weight:600}
+.tb-cell .val small{font-family:var(--sans); font-size:11px; font-weight:400; color:var(--muted); margin-left:3px}
+.tb-cell.flag .val{color:var(--accent-ink)}
+.tb-cell.warn .val{color:var(--amber)}
+.tb-cell.est .val{color:var(--amber); font-size:12px}
+
+/* ------------------------------------------------------------------- map */
+.map{
+  border:1px solid var(--line); background:var(--panel); padding:11px 14px 8px;
+  margin-bottom:14px;
+}
+.map-head{display:flex; justify-content:space-between; align-items:baseline; gap:16px; margin-bottom:7px}
+.map-head .t{font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.04em}
+.map-head .n{font-size:11.5px; color:var(--muted); font-family:var(--mono); text-align:right}
+.map-strip{position:relative; height:26px; background:#EDF1EF; border:1px solid var(--line-soft)}
+.seg{
+  position:absolute; top:0; bottom:0; border-right:1px solid rgba(255,255,255,.75);
+  cursor:pointer; transition:filter .1s;
+}
+.seg:hover{filter:brightness(1.08) saturate(1.15)}
+.seg.sel{box-shadow:inset 0 0 0 2px var(--ink)}
+.cat-bool{background:#6FA79E}
+.cat-int{background:#7C93A8}
+.cat-real{background:#8E83A2}
+.cat-str{background:#B49A63}
+.cat-time{background:#8C9C70}
+.cat-struct{background:#B9C3BF}
+.cat-misc{background:#A7B2AE}
+.map-cursor{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); pointer-events:none; display:none; z-index:3}
+.map-ruler{position:relative; height:15px; margin-top:2px}
+.map-ruler .tick{position:absolute; top:0; width:1px; height:4px; background:#B4BFBA}
+.map-ruler .tick span{position:absolute; top:4px; left:2px; font:10px/1 var(--mono); color:var(--muted); white-space:nowrap}
+.map-ruler .tick.end{left:auto; right:0}
+.map-ruler .tick.end span{left:auto; right:0}
+.map-legend{display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; font-size:10.5px; color:var(--muted)}
+.map-legend i{display:inline-block; width:9px; height:9px; margin-right:4px; vertical-align:-1px; border-radius:1px}
+
+/* ---------------------------------------------------------------- toolbar */
+.toolbar{display:flex; align-items:flex-end; justify-content:space-between; gap:14px; flex-wrap:wrap; border-bottom:1px solid var(--line)}
+.tabs{display:flex; gap:2px; align-self:stretch; align-items:flex-end}
+.tab{
+  border:0; background:transparent; padding:9px 14px 8px; font-size:12.5px; color:var(--muted);
+  border-bottom:2px solid transparent; margin-bottom:-1px;
+}
+.tab:hover{color:var(--ink)}
+.tab.active{color:var(--accent-ink); border-bottom-color:var(--accent); font-weight:600}
+.tools{display:flex; align-items:center; gap:8px; padding-bottom:7px}
+.search{
+  height:28px; border:1px solid var(--line); background:var(--panel); border-radius:2px;
+  padding:0 9px; width:210px; font-size:12.5px; outline:none;
+}
+.search:focus{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft)}
+.search::placeholder{color:#98A5A0}
+
+/* ----------------------------------------------------------------- table */
+.panel{background:var(--panel); border:1px solid var(--line); border-top:0; min-height:120px}
+.table-scroll{overflow:auto; max-height:calc(100vh - 366px)}
+table{width:100%; border-collapse:collapse; table-layout:fixed}
+thead th{
+  position:sticky; top:0; z-index:2; background:#F2F5F3; text-align:left;
+  font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.02em;
+  padding:0 10px; height:30px; border-bottom:1px solid var(--line); white-space:nowrap;
+}
+thead th.num, tbody td.num{text-align:right; font-family:var(--mono); font-size:11.5px}
+tbody td{
+  padding:0 10px; height:var(--row); border-bottom:1px solid var(--line-soft);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle;
+}
+tbody tr:hover{background:#F3F8F6}
+tbody tr.root > td{background:#FAFBFA}
+tbody tr.root:hover > td{background:#F3F8F6}
+tbody tr.selected > td{background:#E6F1EE}
+tbody tr.selected > td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+tbody tr.group td:first-child{font-weight:600}
+.name-cell{display:flex; align-items:center; gap:6px; min-width:0}
+.name-cell .nm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.row-disclosure{
+  flex:0 0 auto; width:16px; height:16px; border:0; background:transparent; padding:0;
+  display:grid; place-items:center; color:var(--muted); border-radius:2px;
+}
+.row-disclosure:hover{background:#E1E8E5; color:var(--ink)}
+.row-disclosure svg{transition:transform .12s ease-out}
+.row-disclosure.open svg{transform:rotate(90deg)}
+.leaf-dot{flex:0 0 auto; width:16px; display:grid; place-items:center; color:#B9C4C0}
+.leaf-dot i{width:3px; height:3px; background:currentColor; border-radius:50%; display:block}
+.typename{font-family:var(--mono); font-size:11.5px; color:var(--ink-soft)}
+.typename.ref{color:var(--amber)}
+.off{font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); white-space:nowrap}
+.off .bit{color:var(--accent); font-weight:600}
+.off.est::before{content:"≈"; color:var(--amber); margin-right:2px}
+.init{font-family:var(--mono); font-size:11.5px; color:#6B5A3C}
+.val{font-family:var(--mono); font-size:11.5px; color:var(--ink)}
+.val.str{color:#7A5A12}
+.val.true{color:var(--accent-ink); font-weight:600}
+.val.false{color:#8D9A95}
+.comment{color:var(--muted); font-size:12px}
+tr.more td{color:var(--muted); font-style:italic; background:#FAFBFA}
+tr.more button{border:0;background:transparent;color:var(--accent);font-size:12px;padding:0;text-decoration:underline}
+
+.empty{padding:52px 0; display:grid; place-items:center; min-height:60vh}
+.drop{
+  width:min(560px,92%); border:1px dashed #B6C2BC; background:
+    linear-gradient(0deg,rgba(255,255,255,.6),rgba(255,255,255,.6));
+  padding:38px 40px 34px; text-align:center;
+}
+.drop h3{font-size:18px; font-weight:600; letter-spacing:.01em; margin-bottom:8px}
+.drop p{font-size:12.5px; color:var(--muted); line-height:1.7}
+.drop .fmt{font-family:var(--mono); font-size:11.5px; color:var(--ink-soft); margin-top:14px}
+.drop .cta{margin-top:22px; display:flex; gap:8px; justify-content:center}
+.drop .hint{margin-top:18px; font-size:11.5px; color:#8A9792; text-align:left; border-top:1px solid var(--line-soft); padding-top:14px}
+.dragging .drop{border-color:var(--accent); background:#EDF6F3}
+.dragging .drop h3{color:var(--accent-ink)}
+
+/* ---------------------------------------------------------------- hex */
+.hex-wrap{padding:12px 14px 16px; overflow:auto; max-height:calc(100vh - 340px)}
+.hex-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; gap:16px; flex-wrap:wrap}
+.hex-head .t{font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.04em}
+.hex-head .n{font-size:11.5px; color:var(--muted)}
+.hex{font-family:var(--mono); font-size:11.5px; line-height:1.65; white-space:pre; user-select:text}
+.hex .ln{display:flex; gap:14px; padding:0 4px; border-radius:1px}
+.hex .ln:hover{background:#F2F7F5}
+.hex .addr{color:#8A9792; flex:0 0 62px; text-align:right}
+.hex .bytes{color:var(--ink-soft); flex:0 0 auto}
+.hex .bytes b{font-weight:400; color:#9AA6A1}
+.hex .bytes b.hit{background:#CBE6DF; color:var(--ink); border-radius:1px}
+.hex .asc{color:#7C8984; border-left:1px solid var(--line-soft); padding-left:12px}
+.hex .asc span.hit{background:#CBE6DF; color:var(--ink)}
+.hex .asc span{white-space:pre}
+.hex-note{font-size:12px; color:var(--muted); padding:0 14px 16px; line-height:1.7}
+
+/* ---------------------------------------------------------------- stats */
+.stats{padding:16px 16px 24px; display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px}
+.stat-card{border:1px solid var(--line-soft); padding:14px 15px; background:var(--panel)}
+.stat-card h4{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.04em;margin:0 0 12px}
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar-row{display:grid;grid-template-columns:120px 1fr 52px;align-items:center;gap:10px;font-size:11.5px}
+.bar-row .bname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);color:var(--ink-soft)}
+.bar-track{height:7px;background:#EDF1EF;position:relative;overflow:hidden}
+.bar-fill{position:absolute;inset:0 auto 0 0;background:var(--accent);opacity:.62}
+.bar-row .bval{text-align:right;font-family:var(--mono);color:var(--muted)}
+.stat-grid{display:grid;grid-template-columns:1fr auto;gap:7px 14px;font-size:12px}
+.stat-grid dt{color:var(--muted)}
+.stat-grid dd{margin:0;font-family:var(--mono);font-size:11.5px;text-align:right}
+.empty-note{padding:26px 16px;color:var(--muted);font-size:12.5px}
+.badge{display:inline-block;padding:1px 6px;border:1px solid var(--line);border-radius:2px;font-size:10.5px;color:var(--muted);font-family:var(--sans)}
+
+/* ---------------------------------------------------------------- misc */
+.toast{
+  position:fixed; left:50%; bottom:26px; transform:translate(-50%,8px);
+  background:#16211F; color:#E8EFEC; padding:9px 16px; border-radius:2px; font-size:12.5px;
+  opacity:0; pointer-events:none; transition:opacity .16s, transform .16s; z-index:50;
+}
+.toast.show{opacity:1; transform:translate(-50%,0)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important; animation:none!important}}
+
+@media (max-width:1080px){
+  .shell{grid-template-columns:1fr; height:auto}
+  .rail{border-right:0; border-bottom:1px solid var(--line); display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:0 18px; padding-bottom:10px}
+  .rail-block{margin-bottom:12px}
+  .rail-block + .rail-block{border-top:0; padding-top:0}
+  .workspace{padding:14px}
+  .table-scroll{max-height:none}
+  .hex-wrap{max-height:none}
+}
+@media (max-width:720px){
+  .topbar{height:auto; padding:9px 12px; flex-wrap:wrap; gap:9px}
+  .brand p{display:none}
+  .tools{width:100%; flex-wrap:wrap; padding-bottom:6px}
+  .search{flex:1 1 140px; width:auto}
+  .tb-cell .val{font-size:13px}
+}
+@media print{
+  @page{margin:12mm 10mm}
+  body{background:#fff; font-size:10px}
+  .topbar,.rail,.toolbar,.empty,.map-legend,.toast{display:none!important}
+  .shell{display:block;height:auto}
+  .workspace{padding:0;overflow:visible;background:#fff}
+  .table-scroll,.hex-wrap{max-height:none;overflow:visible}
+  .panel{border-color:#999}
+  table{font-size:9.5px}
+  thead th{background:#EDEDED!important;color:#000;position:static}
+  tbody td{height:auto;padding:3px 6px;border-color:#DDD}
+  tbody tr{break-inside:avoid}
+  .titleblock{border-color:#999}
+  .tb-cell{border:0}
+  .map{break-inside:avoid}
+  .tb-cell .val{font-size:11px}
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="mark" aria-hidden="true">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#6FBFB3" stroke-width="1.2">
+        <rect x="1.5" y="4.5" width="13" height="7" rx="0.5"/>
+        <path d="M4 4.5v-3M8 4.5v-3M12 4.5v-3M4 11.5v3M8 11.5v3M12 11.5v3"/>
+      </svg>
+    </div>
+    <div>
+      <h1>PLC 数据块解析器</h1>
+      <p>西门子 DB / UDT 源文件 · 本地解析，不上传</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="btn" id="openBtn">打开文件</button>
+    <input id="fileInput" type="file" multiple accept=".db,.udt,.scl,.txt,text/plain" hidden>
+    <button class="btn" id="sampleBtn">载入示例</button>
+    <button class="btn" id="printBtn" disabled>打印 / PDF</button>
+  </div>
+</header>
+
+<main class="shell">
+  <aside class="rail">
+    <section class="rail-block">
+      <h2>文件</h2>
+      <ul class="file-list" id="fileList"></ul>
+      <div class="tiny" id="fileEmpty">尚未加载文件</div>
+    </section>
+
+    <section class="rail-block" id="settingsBlock" hidden>
+      <h2>布局规则</h2>
+      <div class="tiny" style="margin-bottom:8px">非优化块按以下对齐上限排布</div>
+      <div id="alignSelect" style="display:flex;gap:0;border:1px solid var(--line);width:fit-content">
+        <button class="seg-btn btn sm" data-align="4" style="border:0;border-right:1px solid var(--line);border-radius:0">4 字节</button>
+        <button class="seg-btn btn sm" data-align="8" style="border:0;border-right:1px solid var(--line);border-radius:0">8 字节</button>
+        <button class="seg-btn btn sm" data-align="packed" style="border:0;border-radius:0">紧凑</button>
+      </div>
+      <div class="tiny" style="margin-top:8px" id="alignHint"></div>
+    </section>
+
+    <section class="rail-block" id="warnBlock" hidden>
+      <h2>解析提示 <span class="badge" id="warnCount">0</span></h2>
+      <ul class="warn-list" id="warnList"></ul>
+    </section>
+
+    <section class="rail-block">
+      <h2>支持的写法</h2>
+      <div class="tiny">
+        DATA_BLOCK / VAR / STRUCT / ARRAY [a..b] OF<br>
+        UDT 引用（连同 .udt 一起拖入）<br>
+        初值、注释、BEGIN 段赋值<br>
+        TIA Portal 与 STEP 7 V5 导出均可
+      </div>
+    </section>
+  </aside>
+
+  <section class="workspace" id="workspace">
+    <div class="empty" id="emptyState">
+      <div class="drop" id="dropZone">
+        <h3>把 .db 文件拖到这里</h3>
+        <p>也可以点“打开文件”选择。多个块文件会一起列出，<br>UDT 定义可以和 DB 一起拖入，交叉引用会自动解析。</p>
+        <div class="fmt">.db　.udt　.scl　.txt</div>
+        <div class="cta">
+          <button class="btn primary" id="dropOpen">选择文件</button>
+          <button class="btn" id="dropSample">看示例</button>
+        </div>
+        <div class="hint">
+          工具只读文本源文件（TIA：右键块 → 生成源文件 / 从块生成源）。<br>
+          如果是 0x70 0x71 开头的二进制块，会提示你导出源码。
+        </div>
+      </div>
+    </div>
+
+    <div class="doc" id="doc" hidden>
+      <div class="titleblock" id="titleBlock"></div>
+
+      <div class="map" id="mapWrap">
+        <div class="map-head">
+          <span class="t">内存布局</span>
+          <span class="n" id="mapNote"></span>
+        </div>
+        <div class="map-strip" id="mapStrip"><div class="map-cursor" id="mapCursor"></div></div>
+        <div class="map-ruler" id="mapRuler"></div>
+        <div class="map-legend" id="mapLegend"></div>
+      </div>
+
+      <div class="toolbar">
+        <nav class="tabs" id="tabs">
+          <button class="tab active" data-tab="vars">变量清单</button>
+          <button class="tab" data-tab="mem">内存镜像</button>
+          <button class="tab" data-tab="stats">统计</button>
+        </nav>
+        <div class="tools">
+          <input class="search" id="search" type="search" placeholder="搜索变量 / 注释">
+          <button class="btn sm" id="expandBtn">展开全部</button>
+          <button class="btn sm" id="collapseBtn">折叠</button>
+          <button class="btn sm" id="csvBtn">导出 CSV</button>
+        </div>
+      </div>
+
+      <div class="panel" id="panelVars">
+        <div class="table-scroll">
+          <table id="varTable">
+            <colgroup>
+              <col style="width:30%"><col style="width:12%"><col style="width:8.5%">
+              <col style="width:4.5%"><col style="width:6%"><col style="width:12%">
+              <col style="width:14%"><col style="width:13%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>名称</th><th>类型</th><th class="num">偏移</th><th class="num">位</th>
+                <th class="num">长度</th><th>起始值</th><th>镜像值</th><th>注释</th>
+              </tr>
+            </thead>
+            <tbody id="varBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" id="panelMem" hidden>
+        <div class="hex-wrap" id="hexWrap"></div>
+      </div>
+
+      <div class="panel" id="panelStats" hidden>
+        <div class="stats" id="statsBody"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script>
+/* =========================================================================
+ * dbparse.js — 西门子 DB 块源文件解析器（纯逻辑，无 DOM）
+ * 支持：TIA Portal / STEP7 V5 导出的文本源 .db
+ * ========================================================================= */
+(function (root) {
+  'use strict';
+
+  /* ---------------------------------------------------------------- 类型表 */
+  // bits: 位宽; align: 对齐字节; cat: 统计分类
+  const ELEM = {
+    bool:      { bits: 1,  align: 1, cat: 'bool' },
+    byte:      { bits: 8,  align: 1, cat: 'int' },
+    char:      { bits: 8,  align: 1, cat: 'char' },
+    usint:     { bits: 8,  align: 1, cat: 'int' },
+    sint:      { bits: 8,  align: 1, cat: 'int' },
+    word:      { bits: 16, align: 2, cat: 'int' },
+    uint:      { bits: 16, align: 2, cat: 'int' },
+    int:       { bits: 16, align: 2, cat: 'int' },
+    s5time:    { bits: 16, align: 2, cat: 'time' },
+    date:      { bits: 16, align: 2, cat: 'time' },
+    timer:     { bits: 16, align: 2, cat: 'time' },
+    counter:   { bits: 16, align: 2, cat: 'int' },
+    dword:     { bits: 32, align: 4, cat: 'int' },
+    udint:     { bits: 32, align: 4, cat: 'int' },
+    dint:      { bits: 32, align: 4, cat: 'int' },
+    real:      { bits: 32, align: 4, cat: 'real' },
+    time:      { bits: 32, align: 4, cat: 'time' },
+    tod:       { bits: 32, align: 4, cat: 'time' },
+    pointer:   { bits: 48, align: 2, cat: 'misc' },
+    any:       { bits: 80, align: 2, cat: 'misc' },
+    lword:     { bits: 64, align: 8, cat: 'int' },
+    ulint:     { bits: 64, align: 8, cat: 'int' },
+    lint:      { bits: 64, align: 8, cat: 'int' },
+    lreal:     { bits: 64, align: 8, cat: 'real' },
+    ltime:     { bits: 64, align: 8, cat: 'time' },
+    dt:        { bits: 64, align: 2, cat: 'time' },
+    dtl:       { bits: 96, align: 2, cat: 'time' },
+    wchar:     { bits: 16, align: 2, cat: 'char' },
+    iec_timer:   { bits: 128, align: 2, cat: 'time' },
+    iec_counter: { bits: 64,  align: 2, cat: 'int' }
+  };
+
+  const ALIAS = {
+    'bool': 'bool',
+    'byte': 'byte', 'char': 'char',
+    'usint': 'usint', 'sint': 'sint',
+    'word': 'word', 'uint': 'uint', 'int': 'int',
+    's5time': 's5time', 's5time_': 's5time',
+    'date': 'date', 'timer': 'timer', 'counter': 'counter',
+    'dword': 'dword', 'udint': 'udint', 'dint': 'dint', 'real': 'real',
+    'time': 'time',
+    'tod': 'tod', 'time_of_day': 'tod', 'timeofday': 'tod',
+    'pointer': 'pointer', 'any': 'any', 'variant': null, 'remote': null,
+    'lword': 'lword', 'ulint': 'ulint', 'lint': 'lint', 'lreal': 'lreal',
+    'ltime': 'ltime', 'ltime_of_day': 'ltime',
+    'dt': 'dt', 'date_and_time': 'dt', 'dateandtime': 'dt',
+    'dtl': 'dtl',
+    'wchar': 'wchar',
+    'iec_timer': 'iec_timer', 'timer_iec': 'iec_timer',
+    'iec_counter': 'iec_counter', 'counter_iec': 'iec_counter'
+  };
+
+  const TYPE_LABEL = {
+    bool: 'Bool', byte: 'Byte', char: 'Char', usint: 'USInt', sint: 'SInt',
+    word: 'Word', uint: 'UInt', int: 'Int', s5time: 'S5Time', date: 'Date',
+    timer: 'Timer', counter: 'Counter', dword: 'DWord', udint: 'UDInt',
+    dint: 'DInt', real: 'Real', time: 'Time', tod: 'Time_Of_Day',
+    pointer: 'Pointer', any: 'Any', lword: 'LWord', ulint: 'ULInt',
+    lint: 'LInt', lreal: 'LReal', ltime: 'LTime', dt: 'Date_And_Time',
+    dtl: 'DTL', wchar: 'WChar', iec_timer: 'IEC_TIMER',
+    iec_counter: 'IEC_COUNTER'
+  };
+
+  /* --------------------------------------------------------------- 工具函数 */
+  const lower = (s) => String(s).toLowerCase();
+
+  function bcd(b) { return ((b >> 4) & 0x0f) * 10 + (b & 0x0f); }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function ceilTo(v, unit) { return Math.ceil(v / unit) * unit; }
+
+  /* ----------------------------------------------------------- 注释剥离 */
+  function splitComments(src) {
+    src = String(src).replace(/^﻿/, '');
+    const lines = src.split(/\r\n|\n|\r/);
+    const codeLines = [];
+    const comments = [];
+    let inBlock = null;
+
+    for (let ln = 0; ln < lines.length; ln++) {
+      const s = lines[ln];
+      let out = '';
+      let cmt = '';
+      let inStr = false, inQid = false;
+      let i = 0;
+      while (i < s.length) {
+        const c = s[i];
+        if (inBlock) {
+          if (inBlock === '(*' && s.startsWith('*)', i)) { i += 2; inBlock = null; continue; }
+          if (inBlock === '/*' && s.startsWith('*/', i)) { i += 2; inBlock = null; continue; }
+          cmt += c; i++; continue;
+        }
+        if (inStr) { out += c; if (c === "'") inStr = false; i++; continue; }
+        if (inQid) { out += c; if (c === '"') inQid = false; i++; continue; }
+        if (c === "'") { inStr = true; out += c; i++; continue; }
+        if (c === '"') { inQid = true; out += c; i++; continue; }
+        if (s.startsWith('//', i)) { cmt += ' ' + s.slice(i + 2); break; }
+        if (s.startsWith('(*', i)) { inBlock = '(*'; i += 2; continue; }
+        if (s.startsWith('/*', i)) { inBlock = '/*'; i += 2; continue; }
+        out += c; i++;
+      }
+      codeLines.push(out);
+      comments.push(cmt.trim());
+    }
+    return { code: codeLines.join('\n'), comments, lines: codeLines };
+  }
+
+  /* --------------------------------------------------------------- 词法分析 */
+  function tokenize(code) {
+    const toks = [];
+    let i = 0, line = 1;
+    const n = code.length;
+
+    while (i < n) {
+      const c = code[i];
+      if (c === '\n') { line++; i++; continue; }
+      if (c === ' ' || c === '\t' || c === '\r') { i++; continue; }
+
+      if (c === '"' || c === "'") {
+        const quote = c;
+        let j = i + 1, s = '';
+        while (j < n && code[j] !== quote) { if (code[j] === '\n') line++; s += code[j++]; }
+        toks.push({ t: quote === '"' ? 'qid' : 'str', v: s, line });
+        i = j + 1;
+        continue;
+      }
+
+      if (/[0-9]/.test(c)) {
+        const m = /^[0-9][0-9A-Za-z_]*(?:#[0-9A-Za-z_:.+\-]+)?(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(code.slice(i));
+        toks.push({ t: 'num', v: m[0], line });
+        i += m[0].length;
+        continue;
+      }
+
+      if (/[A-Za-z_一-龥]/.test(c)) {
+        const m = /^[A-Za-z_一-龥][A-Za-z0-9_一-龥]*/.exec(code.slice(i));
+        const word = m[0];
+        let end = i + word.length;
+        // 带 # 的类型化字面量: T#1s, S5T#5s, B#16#FF, D#2020-01-01
+        if (code[end] === '#') {
+          end++;
+          const m2 = /^[0-9A-Za-z_:.+\-#]+/.exec(code.slice(end));
+          if (m2) end += m2[0].length;
+          toks.push({ t: 'num', v: code.slice(i, end), line });
+          i = end;
+          continue;
+        }
+        toks.push({ t: 'id', v: word, line });
+        i = end;
+        continue;
+      }
+
+      if (c === '#' ) { toks.push({ t: 'sym', v: '#', line }); i++; continue; }
+
+      const three = code.substr(i, 3);
+      const two = code.substr(i, 2);
+      if (two === ':=' || two === '..' || two === '=>' || two === '<=' || two === '>=' || two === '<>') {
+        toks.push({ t: 'sym', v: two, line }); i += 2; continue;
+      }
+      if (';:,.[](){}<>+-*/=@&|!%^~'.includes(c)) {
+        toks.push({ t: 'sym', v: c, line }); i++; continue;
+      }
+      i++; // 无法识别的字符直接跳过
+    }
+    return toks;
+  }
+
+  /* --------------------------------------------------------------- 解析器 */
+  function Parser(code, comments) {
+    this.toks = tokenize(code);
+    this.pos = 0;
+    this.comments = comments || [];
+    this.warnings = [];
+    this.uid = 0;
+  }
+
+  Parser.prototype.peek = function (k) { return this.toks[this.pos + (k || 0)]; };
+  Parser.prototype.next = function () { return this.toks[this.pos++]; };
+  Parser.prototype.eof = function () { return this.pos >= this.toks.length; };
+
+  Parser.prototype.isId = function (tok, name) {
+    return tok && tok.t === 'id' && lower(tok.v) === lower(name);
+  };
+  Parser.prototype.isSym = function (tok, s) {
+    return tok && tok.t === 'sym' && tok.v === s;
+  };
+  Parser.prototype.skipSym = function (s) {
+    if (this.isSym(this.peek(), s)) { this.pos++; return true; }
+    return false;
+  };
+  Parser.prototype.warn = function (msg, line) {
+    this.warnings.push({ message: msg, line: line || null });
+  };
+
+  Parser.prototype.newNode = function (name) {
+    return {
+      id: ++this.uid,
+      name: name,
+      kind: 'elem',
+      elemKey: null,
+      typeName: '',
+      children: null,
+      elem: null,
+      dims: null,
+      count: 0,
+      comment: '',
+      init: null,
+      line: null,
+      offsetBits: 0,
+      bitPacked: false
+    };
+  };
+
+  /* ---- 顶层：一个文件可以包含多个块 ---- */
+  Parser.prototype.parseFile = function () {
+    const blocks = [];
+    while (!this.eof()) {
+      const tok = this.peek();
+      if (this.isId(tok, 'DATA_BLOCK') || this.isId(tok, 'FUNCTION_BLOCK') ||
+          this.isId(tok, 'ORGANIZATION_BLOCK') || this.isId(tok, 'FUNCTION')) {
+        if (this.isId(tok, 'DATA_BLOCK')) blocks.push(this.parseDataBlock());
+        else this.skipBlock();
+      } else if (this.isId(tok, 'TYPE')) {
+        const udt = this.parseTypeBlock();
+        if (udt) {
+          if (!this.udts) this.udts = {};
+          this.udts[lower(udt.name)] = udt;
+        }
+      } else {
+        this.pos++;
+      }
+    }
+    return { blocks, udts: this.udts || {}, warnings: this.warnings };
+  };
+
+  Parser.prototype.skipBlock = function () {
+    const stop = ['END_FUNCTION_BLOCK', 'END_ORGANIZATION_BLOCK', 'END_FUNCTION'];
+    while (!this.eof()) {
+      const t = this.next();
+      if (t.t === 'id' && stop.includes(t.v.toUpperCase())) break;
+    }
+  };
+
+  /* ---- UDT / TYPE 块 ---- */
+  Parser.prototype.parseTypeBlock = function () {
+    this.next(); // TYPE
+    let name = 'UDT';
+    const t = this.peek();
+    if (t && (t.t === 'qid' || t.t === 'id')) {
+      name = t.v;
+      this.pos++;
+      if (this.isId(this.peek(), 'UDT')) { /* TYPE UDT 10 */ }
+    }
+    if (this.isId(this.peek(), 'UDT')) this.pos++;
+    const num = this.peek();
+    if (num && num.t === 'num') { name = name === 'UDT' ? ('UDT' + num.v) : name; this.pos++; }
+
+    const node = this.newNode(name);
+    node.kind = 'struct';
+    node.typeName = name;
+    node.children = [];
+
+    while (!this.eof()) {
+      const tok = this.peek();
+      if (this.isId(tok, 'VERSION')) { this.pos += 3; continue; }
+      if (this.isSym(tok, '{')) { this.parseAttrBlock(); continue; }
+      if (this.isId(tok, 'STRUCT')) {
+        this.pos++;
+        node.children = node.children.concat(this.parseDeclList(['END_STRUCT']));
+        this.skipEndKeyword('END_STRUCT');
+        this.skipSym(';');
+        continue;
+      }
+      if (this.isId(tok, 'END_TYPE')) { this.pos++; break; }
+      if (this.isSym(tok, ';')) { this.pos++; continue; }
+      this.pos++;
+    }
+    return node;
+  };
+
+  Parser.prototype.skipEndKeyword = function (kw) {
+    if (this.isId(this.peek(), kw)) { this.pos++; return true; }
+    // 容错：往后找一找
+    for (let k = 0; k < 4; k++) {
+      if (this.isId(this.peek(k), kw)) { this.pos += k + 1; return true; }
+    }
+    return false;
+  };
+
+  /* ---- DATA_BLOCK ---- */
+  Parser.prototype.parseDataBlock = function () {
+    this.next(); // DATA_BLOCK
+
+    const block = {
+      name: '', dbNumber: null, optimized: false, retain: null,
+      version: '', title: '', author: '', family: '',
+      children: [], attrs: {}, sizeBits: 0, sizeBytes: 0, maxAlign: 1,
+      beginAssignments: [], source: 'source', warnings: []
+    };
+
+    // 名称 / 编号
+    let t = this.peek();
+    if (this.isId(t, 'DB')) {
+      this.pos++;
+      const num = this.peek();
+      if (num && num.t === 'num') { block.dbNumber = parseInt(num.v, 10); this.pos++; }
+    }
+    t = this.peek();
+    if (t && (t.t === 'qid' || t.t === 'id') && !this.isBlockKeyword(t)) {
+      block.name = t.v; this.pos++;
+    }
+    if (this.isId(this.peek(), 'DB')) {
+      this.pos++;
+      const num = this.peek();
+      if (num && num.t === 'num') { block.dbNumber = parseInt(num.v, 10); this.pos++; }
+    }
+
+    // 头部属性
+    while (!this.eof()) {
+      const tok = this.peek();
+      if (!tok) break;
+
+      if (this.isSym(tok, '{')) { this.parseAttrBlock(block.attrs, block); continue; }
+      if (this.isId(tok, 'VERSION')) {
+        this.pos++;
+        this.skipSym(':');
+        const v = this.peek();
+        if (v && (v.t === 'num' || v.t === 'id')) { block.version = v.v; this.pos++; }
+        continue;
+      }
+      if (this.isId(tok, 'NON_RETAIN')) { block.retain = false; this.pos++; continue; }
+      if (this.isId(tok, 'RETAIN')) { block.retain = true; this.pos++; continue; }
+      // 不带花括号的块属性：S7_Optimized_Access := 'TRUE'
+      if (tok.t === 'id' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(tok.v) &&
+          (this.isSym(this.peek(1), ':=') || this.isSym(this.peek(1), '=')) &&
+          !['title', 'author', 'family', 'name', 'version', 'code_version'].includes(lower(tok.v))) {
+        const key = lower(tok.v);
+        this.pos += 2;
+        const val = this.peek();
+        if (val) { block.attrs[key] = val.v; this.pos++; }
+        continue;
+      }
+      if (this.isId(tok, 'TITLE') || this.isId(tok, 'AUTHOR') || this.isId(tok, 'FAMILY') || this.isId(tok, 'NAME')) {
+        const key = lower(tok.v);
+        const line = tok.line;
+        this.pos++;
+        this.skipSym('=');
+        this.skipSym(':');
+        const parts = [];
+        while (!this.eof() && this.peek().line === line && !this.isBlockKeyword(this.peek())) {
+          parts.push(this.next().v);
+        }
+        const val = parts.join(' ').trim();
+        if (key === 'title') block.title = val;
+        else if (key === 'author') block.author = val;
+        else if (key === 'family') block.family = val;
+        else if (key === 'name' && !block.name) block.name = val;
+        continue;
+      }
+      if (this.isId(tok, 'VAR') || this.isId(tok, 'STRUCT')) {
+        if (this.isId(tok, 'VAR')) {
+          this.pos++;
+          while (this.isId(this.peek(), 'RETAIN') || this.isId(this.peek(), 'NON_RETAIN') ||
+                 this.isId(this.peek(), 'CONSTANT')) {
+            if (this.isId(this.peek(), 'CONSTANT')) block.hasConstants = true;
+            this.pos++;
+          }
+          block.children = this.parseDeclList(['END_VAR']);
+          this.skipEndKeyword('END_VAR');
+          this.skipSym(';');
+        } else {
+          this.pos++;
+          block.children = this.parseDeclList(['END_STRUCT']);
+          this.skipEndKeyword('END_STRUCT');
+          this.skipSym(';');
+        }
+        continue;
+      }
+      if (this.isId(tok, 'BEGIN')) {
+        this.pos++;
+        this.parseBegin(block);
+        continue;
+      }
+      if (this.isId(tok, 'END_DATA_BLOCK')) { this.pos++; break; }
+      if (this.isId(tok, 'DATA_BLOCK')) break;
+      this.pos++;
+    }
+
+    if (block.attrs['s7_optimized_access'] !== undefined) {
+      const v = lower(String(block.attrs['s7_optimized_access']));
+      block.optimized = (v === 'true' || v === '1');
+    }
+    if (!block.name && block.dbNumber !== null) block.name = 'DB' + block.dbNumber;
+    if (!block.name) block.name = 'DB';
+
+    return block;
+  };
+
+  Parser.prototype.isBlockKeyword = function (tok) {
+    if (!tok || tok.t !== 'id') return false;
+    const v = tok.v.toUpperCase();
+    return ['VAR', 'STRUCT', 'BEGIN', 'END_VAR', 'END_STRUCT', 'END_DATA_BLOCK',
+      'DATA_BLOCK', 'VERSION', 'NON_RETAIN', 'RETAIN', 'TITLE', 'AUTHOR', 'FAMILY',
+      'TYPE', 'END_TYPE', 'KNOW_HOW_PROTECT', 'CONSTANT'].includes(v);
+  };
+
+  Parser.prototype.parseAttrBlock = function (attrs, block) {
+    // 调用前不消费 '{'
+    this.pos++; // {
+    while (!this.eof() && !this.isSym(this.peek(), '}')) {
+      if (this.isSym(this.peek(), ';')) { this.pos++; continue; }
+      const keyTok = this.peek();
+      if (!keyTok) break;
+      const key = lower(keyTok.v);
+      this.pos++;
+      if (this.isSym(this.peek(), ':=') || this.isSym(this.peek(), '=')) {
+        this.pos++;
+        const valTok = this.peek();
+        if (valTok) {
+          if (attrs) attrs[key] = valTok.v;
+          this.pos++;
+        }
+      } else if (attrs) {
+        attrs[key] = true;
+      }
+    }
+    this.skipSym('}');
+  };
+
+  /* ---- 声明列表 ---- */
+  Parser.prototype.parseDeclList = function (stops) {
+    const out = [];
+    const stopSet = (stops || []).map((s) => s.toUpperCase());
+    let guard = 0;
+
+    while (!this.eof() && guard++ < 200000) {
+      const tok = this.peek();
+      if (!tok) break;
+      if (tok.t === 'id' && stopSet.includes(tok.v.toUpperCase())) break;
+      if (this.isSym(tok, ';')) { this.pos++; continue; }
+      if (this.isSym(tok, '}')) { this.pos++; continue; }
+      if (this.isId(tok, 'BEGIN') || this.isId(tok, 'END_DATA_BLOCK')) break;
+
+      const decl = this.parseDeclaration();
+      if (decl) out.push(decl);
+      else this.pos++; // 防止死循环
+    }
+    return out;
+  };
+
+  Parser.prototype.parseDeclaration = function () {
+    const names = [];
+    let firstTok = this.peek();
+    let guard = 0;
+
+    while (!this.eof() && guard++ < 200) {
+      const tok = this.peek();
+      if (!tok) return null;
+      if (tok.t === 'id' || tok.t === 'qid') {
+        names.push(tok.v);
+        this.pos++;
+        // 名字后的属性块
+        while (this.isSym(this.peek(), '{')) this.parseAttrBlock(null);
+        if (this.isSym(this.peek(), ',')) { this.pos++; continue; }
+        break;
+      }
+      return null;
+    }
+    if (!names.length) return null;
+
+    if (!this.skipSym(':')) {
+      // 不是标准声明（可能是语句），跳过到分号
+      this.warn('无法识别的声明，已跳过：' + names.join(','), firstTok.line);
+      while (!this.eof() && !this.isSym(this.peek(), ';') && !this.isSym(this.peek(), '}')) this.pos++;
+      this.skipSym(';');
+      return null;
+    }
+
+    const typeNode = this.parseType();
+    if (!typeNode) {
+      this.warn('类型解析失败：' + names.join(','), firstTok.line);
+      while (!this.eof() && !this.isSym(this.peek(), ';')) this.pos++;
+      this.skipSym(';');
+      return null;
+    }
+
+    let init = null;
+    if (this.isSym(this.peek(), ':=')) {
+      this.pos++;
+      init = this.parseValueList();
+    }
+
+    let endLine = firstTok.line;
+    while (this.isSym(this.peek(), '{')) this.parseAttrBlock(null);
+    if (this.isSym(this.peek(), ';')) { endLine = this.peek().line; this.pos++; }
+
+    const comment = this.pickComment(endLine);
+
+    // 类型节点已经是一个节点，套上名字
+    typeNode.name = names[0];
+    typeNode.comment = comment;
+    typeNode.line = firstTok.line;
+    typeNode.init = init;
+
+    if (names.length > 1) {
+      // 一行声明多个变量：克隆结构（数组/结构体较少见，但语法允许）
+      const group = this.newNode(names[0]);
+      group.kind = 'group';
+      group.typeName = '';
+      group.children = [];
+      for (const nm of names) {
+        const clone = cloneNode(typeNode);
+        clone.name = nm;
+        group.children.push(clone);
+      }
+      return group;
+    }
+    return typeNode;
+  };
+
+  Parser.prototype.pickComment = function (line) {
+    if (!line) return '';
+    const direct = this.comments[line - 1];
+    if (direct && direct.trim()) return direct.trim();
+    for (let l = line - 2; l >= Math.max(0, line - 4); l--) {
+      const c = this.comments[l];
+      const code = (this.codeLines && this.codeLines[l] || '').trim();
+      if (c && c.trim() && !code) return c.trim();
+    }
+    return '';
+  };
+
+  /* ---- 类型 ---- */
+  Parser.prototype.parseType = function () {
+    const tok = this.peek();
+    if (!tok) return null;
+
+    if (tok.t === 'id' && lower(tok.v) === 'struct') {
+      this.pos++;
+      const node = this.newNode('');
+      node.kind = 'struct';
+      node.typeName = 'Struct';
+      node.children = this.parseDeclList(['END_STRUCT']);
+      this.skipEndKeyword('END_STRUCT');
+      return node;
+    }
+
+    if (tok.t === 'id' && lower(tok.v) === 'array') {
+      this.pos++;
+      this.skipSym('[');
+      const dims = [];
+      let guard = 0;
+      while (!this.eof() && !this.isSym(this.peek(), ']') && guard++ < 20) {
+        const lo = this.parseExprUntil(['..', ',', ']']);
+        if (!this.isSym(this.peek(), '..')) break;
+        this.pos++;
+        const hi = this.parseExprUntil([',', ']']);
+        dims.push({ lo: lo, hi: hi });
+        if (this.isSym(this.peek(), ',')) { this.pos++; continue; }
+        break;
+      }
+      this.skipSym(']');
+      if (this.isId(this.peek(), 'OF')) this.pos++;
+      const elem = this.parseType();
+      if (!elem) return null;
+      const node = this.newNode('');
+      node.kind = 'array';
+      node.typeName = 'Array';
+      node.elem = elem;
+      node.dims = dims;
+      node.count = dims.reduce((acc, d) => {
+        const lo = evalInt(d.lo), hi = evalInt(d.hi);
+        if (lo === null || hi === null || hi < lo) return acc === 0 ? 1 : acc;
+        return acc * (hi - lo + 1);
+      }, 1);
+      return node;
+    }
+
+    if (tok.t === 'id' && (lower(tok.v) === 'string' || lower(tok.v) === 'wstring')) {
+      const isW = lower(tok.v) === 'wstring';
+      this.pos++;
+      let len = 254;
+      if (this.isSym(this.peek(), '[')) {
+        this.pos++;
+        const v = this.parseExprUntil([']']);
+        const n = evalInt(v);
+        if (n !== null) len = n;
+        this.skipSym(']');
+      }
+      const node = this.newNode('');
+      node.kind = 'string';
+      node.elemKey = isW ? 'wstring' : 'string';
+      node.strLen = len;
+      node.isWide = isW;
+      node.typeName = (isW ? 'WString' : 'String') + '[' + len + ']';
+      return node;
+    }
+
+    if (tok.t === 'id' || tok.t === 'qid') {
+      this.pos++;
+      let name = tok.v;
+      // 可能是限定名 A.B
+      while (this.isSym(this.peek(), '.') && this.peek(1) && this.peek(1).t === 'id') {
+        this.pos++;
+        name += '.' + this.next().v;
+      }
+      const node = this.newNode('');
+      node.kind = 'ref';
+      node.refName = name;
+      node.typeName = name;
+      return node;
+    }
+
+    return null;
+  };
+
+  Parser.prototype.parseExprUntil = function (stops) {
+    const out = [];
+    let depth = 0;
+    while (!this.eof()) {
+      const tok = this.peek();
+      if (!tok) break;
+      if (tok.t === 'sym') {
+        if (tok.v === '(' || tok.v === '[') depth++;
+        if (tok.v === ')' || tok.v === ']') {
+          if (depth === 0) break;
+          depth--;
+        }
+        if (depth === 0 && stops.includes(tok.v)) break;
+      }
+      out.push(tok.v);
+      this.pos++;
+    }
+    return out;
+  };
+
+  Parser.prototype.parseValueList = function () {
+    const values = [];
+    let cur = [];
+    let depth = 0;
+    let guard = 0;
+
+    while (!this.eof() && guard++ < 100000) {
+      const tok = this.peek();
+      if (!tok) break;
+      if (tok.t === 'sym') {
+        if (tok.v === '[' || tok.v === '(' || tok.v === '{') depth++;
+        else if (tok.v === ']' || tok.v === ')' || tok.v === '}') { if (depth > 0) depth--; }
+        else if (depth === 0 && tok.v === ';') break;
+        else if (depth === 0 && tok.v === ',') {
+          values.push(cur.join(' ').trim());
+          cur = [];
+          this.pos++;
+          continue;
+        }
+      }
+      cur.push(tok.v);
+      this.pos++;
+    }
+    if (cur.length) values.push(cur.join(' ').trim());
+    return values.filter((v) => v !== '');
+  };
+
+  /* ---- BEGIN 段：取赋值语句 ---- */
+  Parser.prototype.parseBegin = function (block) {
+    let guard = 0;
+    while (!this.eof() && guard++ < 200000) {
+      const tok = this.peek();
+      if (!tok) break;
+      if (this.isId(tok, 'END_DATA_BLOCK')) break;
+      if (this.isId(tok, 'DATA_BLOCK')) break;
+
+      // 读取一条语句
+      const stmt = [];
+      let depth = 0;
+      while (!this.eof()) {
+        const t = this.peek();
+        if (!t) break;
+        if (t.t === 'sym') {
+          if (t.v === '(' || t.v === '[') depth++;
+          if (t.v === ')' || t.v === ']') depth--;
+          if (t.v === ';' && depth <= 0) { this.pos++; break; }
+        }
+        stmt.push(t);
+        this.pos++;
+        if (this.isId(t, 'END_DATA_BLOCK')) { stmt.pop(); break; }
+      }
+      if (!stmt.length) continue;
+
+      const arrow = stmt.findIndex((s) => s.t === 'sym' && (s.v === ':=' || s.v === '='));
+      if (arrow <= 0) {
+        const head = stmt[0];
+        if (head && head.t === 'id') {
+          const kw = head.v.toUpperCase();
+          if (['IF', 'FOR', 'WHILE', 'REPEAT', 'CASE', '//'].includes(kw)) {
+            this.warn('BEGIN 段包含逻辑语句 ' + kw + '，已忽略', head.line);
+          }
+        }
+        continue;
+      }
+
+      const targetToks = stmt.slice(0, arrow);
+      const valueToks = stmt.slice(arrow + 1);
+      const path = parsePathTokens(targetToks);
+      const raw = valueToks.map((t) => t.v).join(' ').trim();
+      if (path && raw) {
+        block.beginAssignments.push({ path, raw, line: stmt[0].line });
+      }
+    }
+  };
+
+  function parsePathTokens(toks) {
+    // 形如 "DB".Var[1].Sub -> [{name},{idx:[..]},...]
+    const segs = [];
+    let i = 0;
+    while (i < toks.length) {
+      const t = toks[i];
+      if (t.t === 'qid' || t.t === 'id') {
+        if (segs.length && segs[segs.length - 1].indexes) {
+          // 名称必须直接跟在 . 之后
+        }
+        segs.push({ name: t.v, indexes: null });
+        i++;
+        continue;
+      }
+      if (t.t === 'sym' && t.v === '.' ) { i++; continue; }
+      if (t.t === 'sym' && t.v === '[') {
+        const idx = [];
+        i++;
+        let cur = [];
+        let depth = 0;
+        while (i < toks.length) {
+          const s = toks[i];
+          if (s.t === 'sym' && s.v === '[') depth++;
+          if (s.t === 'sym' && s.v === ']') {
+            if (depth === 0) { i++; break; }
+            depth--;
+          }
+          if (depth === 0 && s.t === 'sym' && s.v === ',') { idx.push(evalInt(cur)); cur = []; i++; continue; }
+          cur.push(s.v);
+          i++;
+        }
+        if (cur.length) idx.push(evalInt(cur));
+        if (segs.length) segs[segs.length - 1].indexes = idx;
+        continue;
+      }
+      i++;
+    }
+    // 去掉最前面的 DB 名（如果和块名一致）
+    return segs;
+  }
+
+  function evalInt(toks) {
+    if (toks === null || toks === undefined) return null;
+    if (typeof toks === 'number') return isFinite(toks) ? toks : null;
+    const s = Array.isArray(toks) ? toks.join(' ') : String(toks);
+    const trimmed = s.trim();
+    if (!trimmed) return null;
+    if (/^[+-]?\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+    if (/^[+-]?\d+#([0-9A-Fa-f]+)$/.test(trimmed)) {
+      const m = /^([+-]?)(\d+)#([0-9A-Fa-f]+)$/.exec(trimmed);
+      return parseInt(m[3], parseInt(m[2], 10));
+    }
+    if (/^16#[0-9A-Fa-f]+$/i.test(trimmed)) return parseInt(trimmed.slice(3), 16);
+    return null;
+  }
+
+  /* ------------------------------------------------------------- 引用解析 */
+  function resolveRefs(nodes, udts, warnings, seen) {
+    const stack = seen || [];
+    for (const n of nodes) {
+      if (n.kind === 'group') { resolveRefs(n.children, udts, warnings, stack); continue; }
+      if (n.kind === 'array') { resolveRefs([n.elem], udts, warnings, stack); continue; }
+      if (n.kind === 'struct') { resolveRefs(n.children || [], udts, warnings, stack); continue; }
+      if (n.kind !== 'ref') continue;
+
+      const key = lower(n.refName).replace(/^"|"$/g, '');
+      const simple = key.split('.').pop();
+
+      if (ALIAS[key] !== undefined) {
+        const a = ALIAS[key];
+        if (a) { n.kind = 'elem'; n.elemKey = a; n.typeName = TYPE_LABEL[a]; continue; }
+      }
+      if (ALIAS[simple] !== undefined && ALIAS[simple]) {
+        const a = ALIAS[simple];
+        n.kind = 'elem'; n.elemKey = a; n.typeName = TYPE_LABEL[a]; continue;
+      }
+      if (udts && udts[simple]) {
+        if (stack.includes(simple)) {
+          warnings.push('UDT 循环引用：' + simple);
+          n.kind = 'unknown'; n.typeName = n.refName;
+          continue;
+        }
+        const tpl = udts[simple];
+        n.kind = 'struct';
+        n.typeName = n.refName;
+        n.children = cloneNode(tpl).children || [];
+        resolveRefs(n.children, udts, warnings, stack.concat([simple]));
+        continue;
+      }
+      n.kind = 'unknown';
+      n.typeName = n.refName;
+      warnings.push('未定义类型 "' + n.refName + '"（如为 UDT，请一并上传 UDT 源文件）');
+    }
+  }
+
+  function cloneNode(n) {
+    const c = {};
+    for (const k of Object.keys(n)) {
+      if (k === 'children') c.children = (n.children || []).map(cloneNode);
+      else if (k === 'elem') c.elem = n.elem ? cloneNode(n.elem) : null;
+      else if (k === 'dims') c.dims = n.dims ? n.dims.map((d) => ({ lo: d.lo.slice(), hi: d.hi.slice() })) : null;
+      else if (k === 'init') c.init = n.init ? n.init.slice() : null;
+      else if (k === 'id') c.id = 0;
+      else c[k] = n[k];
+    }
+    return c;
+  }
+
+  /* --------------------------------------------------------------- 布局计算 */
+  function buildLayout(block, opts) {
+    opts = opts || {};
+    const maxAlign = opts.maxAlign || 4;
+    const packed = opts.packed === true;
+
+    function sizeOf(node) {
+      if (node._sz) return node._sz;
+      let sz;
+      if (node.kind === 'elem') {
+        const t = ELEM[node.elemKey];
+        sz = { bits: t.bits, align: t.align };
+      } else if (node.kind === 'string') {
+        const unitBits = node.isWide ? 16 : 8;
+        sz = { bits: (node.strLen + 2) * unitBits, align: node.isWide ? 2 : 1 };
+      } else if (node.kind === 'unknown') {
+        sz = { bits: 16, align: 2 };
+      } else if (node.kind === 'group') {
+        let cur = { byte: 0, bit: 0 };
+        cur = place(node.children, cur, false);
+        let bits = cur.byte * 8 + cur.bit;
+        let align = 1;
+        for (const c of node.children) align = Math.max(align, Math.min(sizeOf(c).align, packed ? 1 : maxAlign));
+        bits = ceilTo(Math.ceil(bits / 8) * 8, align * 8);
+        sz = { bits, align };
+      } else if (node.kind === 'struct') {
+        let cur = { byte: 0, bit: 0 };
+        cur = place(node.children || [], cur, false);
+        let bits = cur.byte * 8 + cur.bit;
+        let align = 1;
+        for (const c of (node.children || [])) align = Math.max(align, Math.min(sizeOf(c).align, packed ? 1 : maxAlign));
+        bits = ceilTo(Math.ceil(bits / 8) * 8, align * 8);
+        sz = { bits, align };
+      } else if (node.kind === 'array') {
+        const e = sizeOf(node.elem);
+        const align = Math.min(e.align, packed ? 1 : maxAlign);
+        if (e.bits === 1) sz = { bits: node.count, align: 1, bitPacked: true };
+        else {
+          const stride = ceilTo(e.bits, align * 8);
+          sz = { bits: stride * node.count, align: align };
+        }
+      } else {
+        sz = { bits: 16, align: 2 };
+      }
+      node._sz = sz;
+      return sz;
+    }
+
+    function place(nodes, cur, assign, containerAbs) {
+      for (const node of nodes) {
+        const sz = sizeOf(node);
+        if (sz.bits === 1 || sz.bitPacked) {
+          const bitPos = cur.byte * 8 + cur.bit;
+          if (assign) { node.offsetBits = bitPos; node.relBits = bitPos - containerAbs; }
+          // 布尔数组：也要算步长/维度，便于按元素取偏移
+          if (assign && node.kind === 'array') assignArray(node, bitPos, sizeOf, place);
+          const total = bitPos + sz.bits;
+          cur.byte = Math.floor(total / 8);
+          cur.bit = total % 8;
+          continue;
+        }
+        if (cur.bit) { cur.bit = 0; cur.byte++; }
+        const a = Math.max(1, Math.min(sz.align, packed ? 1 : maxAlign)) * 8;
+        const startBits = Math.ceil(cur.byte * 8 / a) * a;
+        cur.byte = startBits / 8;
+        cur.bit = 0;
+        if (assign) { node.offsetBits = startBits; node.relBits = startBits - containerAbs; }
+
+        if (node.kind === 'struct' || node.kind === 'group') {
+          place(node.children || [], { byte: startBits / 8, bit: 0 }, assign, startBits);
+        } else if (node.kind === 'array' && assign) {
+          assignArray(node, startBits, sizeOf, place);
+        }
+
+        const end = startBits + sz.bits;
+        cur.byte = Math.floor(end / 8);
+        cur.bit = end % 8;
+      }
+      return cur;
+    }
+
+    // 计算整个块
+    const cur = { byte: 0, bit: 0 };
+    place(block.children, cur, true, 0);
+    let totalBits = cur.byte * 8 + cur.bit;
+    totalBits = ceilTo(Math.ceil(totalBits / 8) * 8, 8);
+    block.sizeBits = totalBits;
+    block.sizeBytes = totalBits / 8;
+
+    let maxA = 1;
+    for (const c of block.children) maxA = Math.max(maxA, sizeOf(c).align);
+    block.maxAlign = packed ? 1 : Math.min(maxA, maxAlign);
+    block.sizeBytes = ceilTo(block.sizeBytes, block.maxAlign);
+    block.sizeBits = block.sizeBytes * 8;
+    return block;
+  }
+
+  function assignArray(node, baseBits, sizeOf, place) {
+    // 计算步长，并给数组元素模板分配“相对 0”的内部偏移
+    node.baseBits = baseBits;
+    const e = sizeOf(node.elem);
+    node.elemBits = e.bits;
+    node.strideBits = e.bits === 1 ? 0 : ceilTo(e.bits, Math.max(1, e.align) * 8);
+    if (node.elem.kind === 'struct' || node.elem.kind === 'group') {
+      place([node.elem], { byte: 0, bit: 0 }, true, 0);
+    }
+    // 多维下标 -> 线性序号
+    node.dimsInfo = (node.dims || []).map((d) => {
+      const lo = evalInt(d.lo), hi = evalInt(d.hi);
+      return { lo: lo === null ? 1 : lo, hi: hi === null ? (lo === null ? 1 : lo) : hi };
+    });
+  }
+
+  /* ------------------------------------------------------- 元素偏移 / 遍历 */
+  function arrayElemOffsetBits(node, idx) {
+    const stride = node.elemBits === 1 ? 1 : (node.strideBits || 0);
+    return (node.offsetBits || 0) + idx * stride;
+  }
+
+  function arrayLinearIndex(node, idxes) {
+    // 行主序：最后一维变化最快
+    const dims = node.dimsInfo || [];
+    let lin = 0;
+    for (let d = 0; d < dims.length; d++) {
+      const size = dims[d].hi - dims[d].lo + 1;
+      let i = idxes[d];
+      if (i === null || i === undefined) return null;
+      i = i - dims[d].lo;
+      lin = lin * size + i;
+    }
+    return lin;
+  }
+
+  function indexLabel(node, lin) {
+    const dims = node.dimsInfo || [];
+    if (!dims.length) return '[' + lin + ']';
+    const parts = new Array(dims.length);
+    let rest = lin;
+    for (let d = dims.length - 1; d >= 0; d--) {
+      const size = dims[d].hi - dims[d].lo + 1;
+      parts[d] = dims[d].lo + (rest % size);
+      rest = Math.floor(rest / size);
+    }
+    return '[' + parts.join(',') + ']';
+  }
+
+  function walkLeaves(node, baseBits, pathPrefix, cb, depth) {
+    depth = depth || 0;
+    if (depth > 40) return;
+    if (node.kind === 'elem' || node.kind === 'string' || node.kind === 'unknown') {
+      cb(node, baseBits, pathPrefix);
+      return;
+    }
+    if (node.kind === 'struct' || node.kind === 'group') {
+      for (const c of node.children || []) {
+        walkLeaves(c, baseBits + (c.relBits || 0),
+          pathPrefix ? pathPrefix + '.' + c.name : c.name, cb, depth + 1);
+      }
+      return;
+    }
+    if (node.kind === 'array') {
+      const stride = node.elemBits === 1 ? 1 : (node.strideBits || 0);
+      for (let i = 0; i < node.count; i++) {
+        const label = indexLabel(node, i);
+        const name = (pathPrefix || node.name) + label;
+        walkLeaves(node.elem, baseBits + i * stride, name, cb, depth + 1);
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------ 值 编码/解码 */
+  function readU16(buf, b) { return (buf[b] << 8) | buf[b + 1]; }
+  function readI16(buf, b) { const v = readU16(buf, b); return v & 0x8000 ? v - 0x10000 : v; }
+  function readU32(buf, b) { return ((buf[b] << 24) >>> 0) + (buf[b + 1] << 16) + (buf[b + 2] << 8) + buf[b + 3]; }
+  function readI32(buf, b) { return readU32(buf, b) | 0; }
+
+  function readF32(buf, b) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return dv.getFloat32(b, false);
+  }
+  function readF64(buf, b) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return dv.getFloat64(b, false);
+  }
+  function readU64(buf, b) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return dv.getBigUint64(b, false);
+  }
+  function readI64(buf, b) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return dv.getBigInt64(b, false);
+  }
+
+  function fmtTime(ms) {
+    const neg = ms < 0;
+    ms = Math.abs(ms);
+    const d = Math.floor(ms / 86400000); ms %= 86400000;
+    const h = Math.floor(ms / 3600000); ms %= 3600000;
+    const m = Math.floor(ms / 60000); ms %= 60000;
+    const s = Math.floor(ms / 1000); ms %= 1000;
+    let out = 'T#';
+    if (d) out += d + 'd';
+    if (h) out += h + 'h';
+    if (m) out += m + 'm';
+    if (s) out += s + 's';
+    if (ms) out += ms + 'ms';
+    if (out === 'T#') out = 'T#0ms';
+    return (neg ? '-' : '') + out;
+  }
+
+  function fmtDate(days) {
+    const d = new Date(Date.UTC(1990, 0, 1) + days * 86400000);
+    return 'D#' + d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
+  }
+
+  function fmtTod(ms) {
+    ms = ms % 86400000;
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor(ms % 3600000 / 60000);
+    const s = Math.floor(ms % 60000 / 1000);
+    const mm = ms % 1000;
+    return 'TOD#' + pad2(h) + ':' + pad2(m) + ':' + pad2(s) + '.' + String(mm).padStart(3, '0');
+  }
+
+  function fmtS5Time(buf, b) {
+    const v = readU16(buf, b);
+    const tb = (v >> 12) & 0x3; // 0=10ms 1=100ms 2=1s 3=10s
+    const t = (v >> 12) & 0x3;
+    const bcdVal = ((v >> 8) & 0xF) * 100 + ((v >> 4) & 0xF) * 10 + (v & 0xF);
+    const base = [10, 100, 1000, 10000][tb];
+    return 'S5T#' + (bcdVal * base) + 'ms';
+  }
+
+  function decodeDT(buf, b) {
+    const yy = bcd(buf[b]), mo = bcd(buf[b + 1]), dd = bcd(buf[b + 2]);
+    const hh = bcd(buf[b + 3]), mi = bcd(buf[b + 4]), ss = bcd(buf[b + 5]);
+    const ms = bcd(buf[b + 6]) * 10 + ((buf[b + 7] >> 4) & 0x0F);
+    return 'DT#' + (yy < 90 ? 2000 + yy : 1900 + yy) + '-' + pad2(mo) + '-' + pad2(dd) + ' ' +
+      pad2(hh) + ':' + pad2(mi) + ':' + pad2(ss) + '.' + String(ms).padStart(3, '0');
+  }
+
+  function decodeDTL(buf, b) {
+    const year = readU16(buf, b);
+    const mo = buf[b + 2], dd = buf[b + 3], hh = buf[b + 5], mi = buf[b + 6], ss = buf[b + 7];
+    const ns = readU32(buf, b + 8);
+    return year + '-' + pad2(mo) + '-' + pad2(dd) + ' ' + pad2(hh) + ':' + pad2(mi) + ':' + pad2(ss) + '.' + String(ns).padStart(9, '0');
+  }
+
+  function decodeString(buf, b, len, wide) {
+    if (wide) {
+      const max = readU16(buf, b), act = Math.min(readU16(buf, b + 2), len);
+      const bytes = new Uint8Array(act * 2);
+      for (let i = 0; i < act * 2; i++) bytes[i] = buf[b + 4 + i];
+      try { return new TextDecoder('utf-16be').decode(bytes); } catch (e) { return '?'; }
+    }
+    const max = buf[b], act = Math.min(buf[b + 1], len);
+    const bytes = buf.subarray(b + 2, b + 2 + act);
+    if (!act) return '';
+    // S7 字符串常见 ASCII / CP936(GBK) / UTF-8，按最常见顺序尝试
+    try {
+      const utf8 = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      return utf8;
+    } catch (e) { /* next */ }
+    try { return new TextDecoder('gbk').decode(bytes); } catch (e) { return '?'; }
+  }
+
+  function hex2(v, width) {
+    return '0x' + v.toString(16).toUpperCase().padStart(width || 2, '0');
+  }
+
+  function decodeLeaf(node, buf, bitPos) {
+    const key = node.elemKey;
+    const b = Math.floor(bitPos / 8);
+    const bit = bitPos % 8;
+    switch (key) {
+      case 'bool': return ((buf[b] >> bit) & 1) ? 'TRUE' : 'FALSE';
+      case 'byte': case 'usint': return String(buf[b]) + '  ' + hex2(buf[b]);
+      case 'sint': return String((buf[b] << 24) >> 24);
+      case 'char': { const c = buf[b]; return (c >= 32 && c < 127) ? "'" + String.fromCharCode(c) + "'" : hex2(c); }
+      case 'wchar': { const c = readU16(buf, b); return (c >= 32 && c < 0xFFFF) ? "'" + String.fromCharCode(c) + "'" : hex2(c, 4); }
+      case 'word': return String(readU16(buf, b)) + '  ' + hex2(readU16(buf, b), 4);
+      case 'uint': return String(readU16(buf, b));
+      case 'int': return String(readI16(buf, b));
+      case 'dword': return String(readU32(buf, b)) + '  ' + hex2(readU32(buf, b), 8);
+      case 'udint': return String(readU32(buf, b));
+      case 'dint': return String(readI32(buf, b));
+      case 'real': return String(round(readF32(buf, b), 7));
+      case 'lreal': return String(readF64(buf, b));
+      case 'lword': return '0x' + readU64(buf, b).toString(16).toUpperCase().padStart(16, '0');
+      case 'ulint': return readU64(buf, b).toString();
+      case 'lint': return readI64(buf, b).toString();
+      case 'time': return fmtTime(readI32(buf, b));
+      case 'ltime': return String(readI64(buf, b)) + 'ns';
+      case 's5time': return fmtS5Time(buf, b);
+      case 'date': return fmtDate(readU16(buf, b));
+      case 'tod': return fmtTod(readU32(buf, b));
+      case 'dt': return decodeDT(buf, b);
+      case 'dtl': return decodeDTL(buf, b);
+      case 'string': return decodeString(buf, b, node.strLen, false);
+      case 'wstring': return decodeString(buf, b, node.strLen, true);
+      case 'pointer': case 'any':
+        return Array.from(buf.subarray(b, b + (key === 'any' ? 10 : 6))).map((x) => x.toString(16).padStart(2, '0')).join(' ');
+      default:
+        return Array.from(buf.subarray(b, b + 2)).map((x) => x.toString(16).padStart(2, '0')).join(' ');
+    }
+  }
+
+  function round(v, digits) {
+    if (!isFinite(v)) return v;
+    const p = Math.pow(10, digits);
+    return Math.round(v * p) / p;
+  }
+
+  /* ------------------------------------------------------ 字面量 -> 字节写入 */
+  function parseLiteral(raw, node) {
+    if (raw === null || raw === undefined) return null;
+    let s = String(raw).trim();
+    if (!s) return null;
+    // 去掉外层括号
+    while (s.startsWith('(') && s.endsWith(')')) s = s.slice(1, -1).trim();
+
+    const key = node.elemKey || (node.kind === 'string' ? (node.isWide ? 'wstring' : 'string') : null);
+
+    if (key === 'bool') {
+      const v = lower(s);
+      if (v === 'true' || v === '1' || v === '16#1') return true;
+      if (v === 'false' || v === '0' || v === '16#0') return false;
+      const n = parseInt(s, 10);
+      return isNaN(n) ? null : n !== 0;
+    }
+    if (key === 'string' || key === 'wstring') {
+      const m = /^'(.*)'$/s.exec(s);
+      return m ? m[1] : s.replace(/^'|'$/g, '');
+    }
+    if (key === 'char' || key === 'wchar') {
+      const m = /^'(.*)'$/s.exec(s);
+      return m ? m[1].charCodeAt(0) : null;
+    }
+    if (key === 'real' || key === 'lreal') {
+      const n = parseNumber(s);
+      return isFinite(n) ? n : null;
+    }
+    if (key === 'time' || key === 'ltime') return parseTimeMs(s);
+    if (key === 's5time') return parseS5TimeMs(s);
+    if (key === 'date') return parseDateDays(s);
+    if (key === 'tod') return parseTodMs(s);
+    if (key === 'dt' || key === 'dtl') return null; // 交给原文显示
+    const n = parseNumber(s);
+    return isFinite(n) ? n : null;
+  }
+
+  function parseNumber(s) {
+    s = s.trim();
+    let m;
+    if ((m = /^([A-Z]{1,2})?#(\d+)#([0-9A-Fa-f]+)$/i.exec(s))) return parseInt(m[3], parseInt(m[2], 10));
+    if ((m = /^16#([0-9A-Fa-f]+)$/i.exec(s))) return parseInt(m[1], 16);
+    if ((m = /^2#([01]+)$/.exec(s))) return parseInt(m[1], 2);
+    if ((m = /^8#([0-7]+)$/.exec(s))) return parseInt(m[1], 8);
+    if ((m = /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.exec(s))) return parseFloat(s);
+    if (lower(s) === 'true') return 1;
+    if (lower(s) === 'false') return 0;
+    return NaN;
+  }
+
+  function parseTimeMs(s) {
+    s = s.replace(/^(LT|T|TIME|LTIME)#/i, '');
+    let total = 0;
+    const re = /([+-]?\d+(?:\.\d+)?)(d|h|m|s|ms|us|ns)/gi;
+    let m, found = false;
+    while ((m = re.exec(s))) {
+      found = true;
+      const v = parseFloat(m[1]);
+      const unit = m[2].toLowerCase();
+      const mult = { d: 86400000, h: 3600000, m: 60000, s: 1000, ms: 1, us: 0.001, ns: 0.000001 }[unit] || 1;
+      total += v * mult;
+    }
+    if (!found && /^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+    return found ? total : null;
+  }
+
+  function parseS5TimeMs(s) {
+    s = s.replace(/^S5T#/i, '');
+    const ms = parseTimeMs(s);
+    return ms;
+  }
+
+  function parseDateDays(s) {
+    const m = /D#(\d{4})-(\d{1,2})-(\d{1,2})/i.exec(s);
+    if (!m) return null;
+    const d = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    return Math.round((d - Date.UTC(1990, 0, 1)) / 86400000);
+  }
+
+  function parseTodMs(s) {
+    const m = /(?:TOD|TIME_OF_DAY)#(\d{1,2}):(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?/i.exec(s);
+    if (!m) return null;
+    return (+m[1]) * 3600000 + (+m[2]) * 60000 + (+m[3]) * 1000 + (m[4] ? +m[4].padStart(3, '0') : 0);
+  }
+
+  function writeLeaf(buf, node, bitPos, value) {
+    if (value === null || value === undefined) return false;
+    const key = node.elemKey;
+    const b = Math.floor(bitPos / 8);
+    const bit = bitPos % 8;
+    const need = Math.ceil((bit + (ELEM[key] ? ELEM[key].bits : 16)) / 8);
+    if (b + need > buf.length) return false;
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    try {
+      switch (key) {
+        case 'bool': if (value) buf[b] |= (1 << bit); else buf[b] &= ~(1 << bit); return true;
+        case 'byte': case 'usint': buf[b] = value & 0xFF; return true;
+        case 'sint': buf[b] = value & 0xFF; return true;
+        case 'char': buf[b] = (typeof value === 'number' ? value : 0) & 0xFF; return true;
+        case 'wchar': dv.setUint16(b, (typeof value === 'number' ? value : 0) & 0xFFFF); return true;
+        case 'word': case 'uint': dv.setUint16(b, value & 0xFFFF); return true;
+        case 'int': dv.setInt16(b, value); return true;
+        case 'dword': case 'udint': dv.setUint32(b, value >>> 0); return true;
+        case 'dint': dv.setInt32(b, value | 0); return true;
+        case 'real': dv.setFloat32(b, value); return true;
+        case 'lreal': dv.setFloat64(b, value); return true;
+        case 'lword': case 'ulint': dv.setBigUint64(b, BigInt(Math.trunc(value))); return true;
+        case 'lint': dv.setBigInt64(b, BigInt(Math.trunc(value))); return true;
+        case 'time': dv.setInt32(b, value); return true;
+        case 'ltime': dv.setBigInt64(b, BigInt(Math.trunc(value))); return true;
+        case 's5time': dv.setUint16(b, encodeS5Time(value)); return true;
+        case 'date': dv.setUint16(b, value & 0xFFFF); return true;
+        case 'tod': dv.setUint32(b, value >>> 0); return true;
+        case 'dt': writeDT(buf, b, value); return true;
+        case 'dtl': return false;
+        case 'string': {
+          // value 已解析成字符串
+          const s = String(value);
+          if (node.strLen <= 0) return false;
+          buf[b] = node.strLen;
+          const enc = encodeS7String(s);
+          buf[b + 1] = Math.min(enc.length, node.strLen);
+          for (let i = 0; i < Math.min(enc.length, node.strLen); i++) buf[b + 2 + i] = enc[i];
+          return true;
+        }
+        case 'wstring': {
+          const s = String(value);
+          const maxW = node.strLen;
+          dv.setUint16(b, maxW);
+          dv.setUint16(b + 2, Math.min(s.length, maxW));
+          for (let i = 0; i < Math.min(s.length, maxW); i++) dv.setUint16(b + 4 + i * 2, s.charCodeAt(i));
+          return true;
+        }
+        default: return false;
+      }
+    } catch (e) { return false; }
+  }
+
+  function encodeS7String(s) {
+    // 优先 UTF-8；纯 ASCII 时两者一致
+    const out = [];
+    for (const ch of s) {
+      const code = ch.codePointAt(0);
+      if (code < 0x80) out.push(code);
+      else if (code < 0x800) { out.push(0xC0 | (code >> 6), 0x80 | (code & 63)); }
+      else if (code < 0x10000) { out.push(0xE0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63)); }
+      else { out.push(0xF0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63)); }
+    }
+    return out;
+  }
+
+  function encodeS5Time(ms) {
+    const bases = [10, 100, 1000, 10000];
+    let bi = 0;
+    while (bi < 3 && ms / bases[bi] > 999) bi++;
+    const val = Math.min(999, Math.round(ms / bases[bi]));
+    const bcdVal = ((Math.floor(val / 100) & 0xF) << 8) | ((Math.floor(val / 10) % 10) << 4) | (val % 10);
+    return (bi << 12) | bcdVal;
+  }
+
+  function writeDT(buf, b, ms) { /* 暂不支持编码 DT 字面量 */ }
+
+  /* ------------------------------------------------------------- 组 装结果 */
+  function buildMemoryImage(block, opts) {
+    const buf = new Uint8Array(Math.max(1, block.sizeBytes));
+    const applied = { decl: 0, begin: 0, failed: [] };
+
+    // 1) 声明里的初值（含嵌套结构 / UDT 成员的默认值）
+    for (const node of block.children) applyDeclInit(node, node.offsetBits || 0, buf, applied);
+
+    // 2) BEGIN 段赋值覆盖
+    for (const asg of block.beginAssignments) {
+      const target = resolveAssignPath(block, asg.path);
+      if (!target) {
+        applied.failed.push(asg.raw + '  (无法定位目标)');
+        continue;
+      }
+      const val = parseLiteral(asg.raw, target.node);
+      if (val === null) { applied.failed.push(asg.raw); continue; }
+      if (writeLeaf(buf, target.node, target.bitOffset, val)) applied.begin++;
+      else applied.failed.push(asg.raw);
+    }
+    return { buffer: buf, applied };
+  }
+
+  function applyDeclInit(node, baseBits, buf, applied) {
+    const hasInit = node.init && node.init.length;
+
+    if (node.kind === 'elem' || node.kind === 'string' || node.kind === 'unknown') {
+      if (!hasInit) return;
+      const val = parseLiteral(node.init[0], node);
+      if (val !== null && writeLeaf(buf, node, baseBits, val)) applied.decl++;
+      return;
+    }
+
+    if (node.kind === 'struct' || node.kind === 'group') {
+      if (hasInit) {
+        // 结构体的初值列表按叶子顺序平铺
+        const leaves = [];
+        walkLeaves(node, baseBits, '', (n, off) => leaves.push({ n: n, off: off }));
+        node.init.forEach((raw, i) => {
+          if (i >= leaves.length) return;
+          const val = parseLiteral(raw, leaves[i].n);
+          if (val !== null && writeLeaf(buf, leaves[i].n, leaves[i].off, val)) applied.decl++;
+        });
+      }
+      for (const c of node.children || []) {
+        applyDeclInit(c, baseBits + (c.relBits || 0), buf, applied);
+      }
+      return;
+    }
+
+    if (node.kind === 'array') {
+      const stride = node.elemBits === 1 ? 1 : (node.strideBits || 0);
+      if (hasInit) {
+        if (node.elem.kind === 'struct' || node.elem.kind === 'group') {
+          const leaves = [];
+          walkLeaves(node, baseBits, '', (n, off) => leaves.push({ n: n, off: off }));
+          node.init.forEach((raw, i) => {
+            if (i >= leaves.length) return;
+            const val = parseLiteral(raw, leaves[i].n);
+            if (val !== null && writeLeaf(buf, leaves[i].n, leaves[i].off, val)) applied.decl++;
+          });
+        } else {
+          node.init.forEach((raw, i) => {
+            if (i >= node.count) return;
+            const val = parseLiteral(raw, node.elem);
+            if (val !== null && writeLeaf(buf, node.elem, baseBits + i * stride, val)) applied.decl++;
+          });
+        }
+      }
+      // 元素类型自带的默认值（UDT 成员的初值）
+      if (node.elem.kind === 'struct' || node.elem.kind === 'group' || node.elem.init) {
+        for (let i = 0; i < node.count; i++) {
+          applyDeclInit(node.elem, baseBits + i * stride, buf, applied);
+        }
+      }
+    }
+  }
+
+  function resolveAssignPath(block, path) {
+    if (!path || !path.length) return null;
+    let segs = path;
+    // 去掉与块同名的首段
+    if (segs.length > 1 && (lower(segs[0].name) === lower(block.name) ||
+        segs[0].name.toUpperCase() === ('DB' + block.dbNumber))) segs = segs.slice(1);
+
+    let acc = 0;          // 当前节点在块内的绝对位偏移
+    let list = block.children;
+    let node = null;
+
+    for (const seg of segs) {
+      let found = null;
+      for (const n of list) {
+        if (lower(n.name) === lower(seg.name)) { found = n; break; }
+      }
+      if (!found) return null;
+
+      if (found.kind === 'array' && seg.indexes && seg.indexes.length) {
+        const lin = arrayLinearIndex(found, seg.indexes);
+        if (lin === null || lin < 0 || lin >= found.count) return null;
+        const stride = found.elemBits === 1 ? 1 : (found.strideBits || 0);
+        acc += (found.relBits || 0) + lin * stride;
+        node = found.elem;
+        list = (node.kind === 'struct' || node.kind === 'group') ? (node.children || []) : [];
+      } else {
+        acc += (found.relBits || 0);
+        node = found;
+        list = (found.kind === 'struct' || found.kind === 'group') ? (found.children || []) : [];
+      }
+    }
+    if (!node) return null;
+    if (node.kind !== 'elem' && node.kind !== 'string' && node.kind !== 'unknown') return null;
+    return { node, bitOffset: acc };
+  }
+
+  /* --------------------------------------------------------------- 主入口 */
+  function parse(text, options) {
+    options = options || {};
+    const split = splitComments(text);
+    const p = new Parser(split.code, split.comments);
+    p.codeLines = split.lines;
+    let res = p.parseFile();
+
+    // 合并外部提供的 UDT
+    const udts = Object.assign({}, res.udts);
+    if (options.udts) {
+      for (const k of Object.keys(options.udts)) udts[lower(k)] = options.udts[k];
+    }
+
+    for (const block of res.blocks) {
+      resolveRefs(block.children, udts, res.warnings, []);
+    }
+
+    for (const block of res.blocks) {
+      buildLayout(block, { maxAlign: options.maxAlign || 4, packed: options.packed });
+      block.image = buildMemoryImage(block, options);
+      block.sizeBytes = block.sizeBytes;
+    }
+
+    return {
+      blocks: res.blocks,
+      udts,
+      warnings: res.warnings,
+      sourceText: text
+    };
+  }
+
+  /* ------------------------------------------------------------ 行 级 检测 */
+  function sniff(text) {
+    const head = text.slice(0, 4096);
+    let weird = 0;
+    for (let i = 0; i < head.length; i++) {
+      const c = head.charCodeAt(i);
+      if (c === 0) weird += 10;
+      else if (c < 9 || (c > 13 && c < 32)) weird++;
+    }
+    if (weird > 20) return 'binary';
+    if (/DATA_BLOCK|FUNCTION_BLOCK|TYPE\s+"?UDT|STRUCT/i.test(head)) return 'source';
+    return 'unknown';
+  }
+
+  /* --------------------------------------------------------------- 导出 */
+  const api = {
+    parse, sniff, splitComments, tokenize,
+    ELEM, ALIAS, TYPE_LABEL,
+    walkLeaves, decodeLeaf, parseLiteral, resolveAssignPath,
+    arrayElemOffsetBits, arrayLinearIndex, indexLabel,
+    fmtTime, fmtDate, fmtTod, decodeDT, decodeDTL, decodeString,
+    cloneNode, buildLayout, buildMemoryImage, resolveRefs,
+    _internal: { evalInt, parseNumber, parseTimeMs, parsePathTokens }
+  };
+
+  root.DBParse = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+</script>
+<script>
+/* =========================================================================
+ * app.js — 界面逻辑
+ * ========================================================================= */
+(function () {
+  'use strict';
+
+  const P = window.DBParse;
+  const $ = (id) => document.getElementById(id);
+
+  const el = {
+    fileList: $('fileList'), fileEmpty: $('fileEmpty'), fileInput: $('fileInput'),
+    openBtn: $('openBtn'), sampleBtn: $('sampleBtn'), printBtn: $('printBtn'),
+    emptyState: $('emptyState'), doc: $('doc'), dropZone: $('dropZone'),
+    titleBlock: $('titleBlock'), mapStrip: $('mapStrip'), mapRuler: $('mapRuler'),
+    mapNote: $('mapNote'), mapCursor: $('mapCursor'), mapLegend: $('mapLegend'),
+    tabs: $('tabs'), search: $('search'), varBody: $('varBody'), varTable: $('varTable'),
+    panelVars: $('panelVars'), panelMem: $('panelMem'), panelStats: $('panelStats'),
+    hexWrap: $('hexWrap'), statsBody: $('statsBody'),
+    expandBtn: $('expandBtn'), collapseBtn: $('collapseBtn'), csvBtn: $('csvBtn'),
+    warnBlock: $('warnBlock'), warnList: $('warnList'), warnCount: $('warnCount'),
+    settingsBlock: $('settingsBlock'), alignSelect: $('alignSelect'), alignHint: $('alignHint'),
+    toast: $('toast'), workspace: $('workspace')
+  };
+
+  const state = {
+    files: [],
+    blocks: [],
+    activeKey: null,
+    expanded: new Set(),
+    search: '',
+    tab: 'vars',
+    selected: null,
+    align: 4,
+    rows: []
+  };
+
+  const CAT_LABEL = { bool: 'Bool', int: '整数', real: '浮点', str: '字符 / 字符串', time: '时间日期', struct: '结构', misc: '其它' };
+
+  /* --------------------------------------------------------------- 工具 */
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function bytes(n) { return n + ' B'; }
+  function bitsLabel(node) {
+    if (node.kind === 'elem' && node.elemKey === 'bool') return '1 bit';
+    const b = node._sz ? node._sz.bits : 0;
+    if (b % 8 === 0) return (b / 8) + ' B';
+    return b + ' bit';
+  }
+  function bitLen(node) { return node._sz ? node._sz.bits : 0; }
+  function offsetText(offBits) {
+    const b = Math.floor(offBits / 8), bit = offBits % 8;
+    return { byte: b, bit: bit, text: bit ? ('+' + b + '<span class="bit">.' + bit + '</span>') : ('+' + b) };
+  }
+  function dimsText(node) {
+    if (!node.dims) return '';
+    return node.dims.map((d) => (d.lo || []).join(' ') + '..' + (d.hi || []).join(' ')).join(',');
+  }
+  function typeLabel(node) {
+    if (node.kind === 'array') {
+      const e = node.elem ? typeLabel(node.elem) : '';
+      return 'Array[' + dimsText(node) + ']' + (e ? ' of ' + e : '');
+    }
+    if (node.kind === 'struct') return node.typeName || 'Struct';
+    return node.typeName || '';
+  }
+  function s7Address(block, node, offBits) {
+    const db = block.dbNumber !== null ? 'DB' + block.dbNumber : 'DB?';
+    const b = Math.floor(offBits / 8), bit = offBits % 8;
+    if (node.kind === 'elem') {
+      const t = P.ELEM[node.elemKey];
+      if (!t) return db + '.DBB' + b;
+      if (node.elemKey === 'bool') return db + '.DBX' + b + '.' + bit;
+      if (t.bits === 8) return db + '.DBB' + b;
+      if (t.bits === 16) return db + '.DBW' + b;
+      if (t.bits === 32) return db + '.DBD' + b;
+    }
+    const n = Math.max(1, Math.ceil(bitLen(node) / 8));
+    return db + '.DBB' + b + (n > 1 ? '..' + (b + n - 1) : '');
+  }
+
+  function catOf(node) {    if (!node) return 'misc';
+    if (node.kind === 'array') return catOf(node.elem);
+    if (node.kind === 'struct' || node.kind === 'group') return 'struct';
+    if (node.kind === 'string') return 'str';
+    const t = P.ELEM[node.elemKey];
+    if (!t) return 'misc';
+    if (t.cat === 'char') return 'str';
+    return t.cat;
+  }
+  function isGroup(node) {
+    return node.kind === 'struct' || node.kind === 'group' || node.kind === 'array';
+  }
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+  let toastTimer = null;
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2200);
+  }
+
+  const pathKey = (path) => (state.activeKey || '') + '|' + path;
+
+  function activeEntry() {
+    return state.blocks.find((b) => b.key === state.activeKey) || null;
+  }
+
+  /* ------------------------------------------------------------- 文件读取 */
+  async function readText(file) {
+    const buf = await file.arrayBuffer();
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    } catch (e) {
+      try { return new TextDecoder('gbk').decode(buf); } catch (e2) { return new TextDecoder('utf-8').decode(buf); }
+    }
+  }
+
+  async function addFiles(list) {
+    const files = Array.from(list || []);
+    if (!files.length) return;
+    let added = 0;
+    for (const f of files) {
+      if (!/\.(db|udt|scl|txt)$/i.test(f.name)) { toast('已跳过不支持的文件：' + f.name); continue; }
+      const text = await readText(f);
+      state.files.push({
+        id: 'f' + (++uid),
+        name: f.name,
+        size: f.size,
+        text: text,
+        result: null,
+        blocks: [],
+        binary: false,
+        error: ''
+      });
+      added++;
+    }
+    if (added) {
+      parseAll();
+      toast('已加载 ' + added + ' 个文件');
+    }
+  }
+  let uid = 0;
+
+  function parseAll() {
+    // 第一遍：收集 UDT
+    const udts = {};
+    for (const f of state.files) {
+      try {
+        const r = P.parse(f.text, {});
+        Object.assign(udts, r.udts || {});
+      } catch (e) { /* 第二遍会记录错误 */ }
+    }
+    for (const f of state.files) {
+      f.blocks = [];
+      f.error = '';
+      f.binary = P.sniff(f.text) === 'binary';
+      try {
+        const r = P.parse(f.text, { udts: udts, maxAlign: state.align });
+        f.result = r;
+        f.blocks = r.blocks.map((b, i) => ({ file: f, block: b, key: f.id + '#' + i, fileIndex: i }));
+      } catch (e) {
+        f.error = e && e.message ? e.message : String(e);
+        f.result = null;
+      }
+    }
+
+    state.blocks = [];
+    for (const f of state.files) for (const b of f.blocks) state.blocks.push(b);
+
+    if (!state.blocks.length) {
+      state.activeKey = null;
+      renderFileList();
+      renderEmptyWarning();
+      return;
+    }
+    const still = state.blocks.find((b) => b.key === state.activeKey);
+    state.activeKey = still ? still.key : state.blocks[0].key;
+    state.expanded.clear();
+    state.selected = null;
+    renderAll();
+  }
+
+  /* ------------------------------------------------------------- 左侧列表 */
+  function renderFileList() {
+    el.fileList.innerHTML = '';
+    el.fileEmpty.hidden = state.files.length > 0;
+    for (const f of state.files) {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.className = 'file-item' + (f.blocks.some((b) => b.key === state.activeKey) ? ' active' : '');
+      const meta = f.binary ? '二进制' : (f.error ? '出错' : (f.blocks.length + ' 块'));
+      btn.innerHTML = '<span class="fname" title="' + esc(f.name) + '">' + esc(f.name) + '</span>' +
+        '<span class="fmeta">' + meta + '</span>';
+      btn.addEventListener('click', () => {
+        if (f.blocks.length) selectBlock(f.blocks[0].key);
+        else if (f.binary) toast('这是二进制块文件，需要先导出为源文件');
+        else if (f.error) toast('解析失败：' + f.error);
+        else toast('这个文件里没有数据块');
+      });
+      li.appendChild(btn);
+
+      if (f.blocks.length > 1 || (f.blocks.length === 1)) {
+        const ul = document.createElement('ul');
+        ul.className = 'block-list';
+        for (const b of f.blocks) {
+          const bl = document.createElement('li');
+          const bb = document.createElement('button');
+          bb.className = 'block-item' + (b.key === state.activeKey ? ' active' : '');
+          bb.innerHTML = '<span>' + esc(b.block.name) + '</span>' +
+            '<span class="bnum">' + (b.block.dbNumber !== null ? 'DB' + b.block.dbNumber : '') +
+            ' · ' + b.block.sizeBytes + ' B</span>';
+          bb.addEventListener('click', () => selectBlock(b.key));
+          bl.appendChild(bb);
+          ul.appendChild(bl);
+        }
+        li.appendChild(ul);
+      }
+      if (f.binary || f.error) {
+        const ul = document.createElement('ul');
+        ul.className = 'block-list';
+        const li2 = document.createElement('li');
+        li2.className = 'tiny';
+        li2.style.color = '#A3372E';
+        li2.style.padding = '2px 10px 6px';
+        li2.textContent = f.binary ? '二进制块：请从 TIA 生成源文件' : ('解析错误：' + f.error);
+        ul.appendChild(li2);
+        li.appendChild(ul);
+      }
+      el.fileList.appendChild(li);
+    }
+  }
+
+  function renderEmptyWarning() {
+    const bad = state.files.find((f) => f.binary);
+    const looksXml = state.files.some((f) => /^\s*</.test(f.text || ''));
+    const drop = el.dropZone;
+    el.emptyState.hidden = false;
+    el.doc.hidden = true;
+    if (bad) {
+      drop.innerHTML =
+        '<h3>这是二进制块文件</h3>' +
+        '<p>文件头看起来是 0x70 0x71 的编译块，不是文本源。<br>' +
+        '在 TIA Portal 里右键块 → “生成源文件”，或在 STEP 7 里用“生成源文件”导出 .db 后再拖进来。</p>' +
+        '<div class="cta"><button class="btn" id="dropSample">先看示例</button></div>';
+      const s = $('dropSample');
+      if (s) s.addEventListener('click', loadSample);
+    } else if (looksXml) {
+      drop.innerHTML =
+        '<h3>这是 XML 格式的导出</h3>' +
+        '<p>文件内容是 TIA 的 XML（SIMATIC SD），不是 SCL 文本源。<br>' +
+        '请改用“生成源文件 / Generate source”导出 <code>.db</code> 文本，或者把 SCL 源文件直接拖进来。</p>' +
+        '<div class="cta"><button class="btn" id="dropSample">先看示例</button></div>';
+      const s = $('dropSample');
+      if (s) s.addEventListener('click', loadSample);
+    } else if (state.files.length) {
+      drop.innerHTML =
+        '<h3>没有找到数据块</h3>' +
+        '<p>文件读进来了，但里面没有 <code>DATA_BLOCK</code> 段。<br>也可能是 UDT 文件——单独上传它能帮助解析引用它的 DB。</p>' +
+        '<div class="cta"><button class="btn" id="dropSample">看示例</button></div>';
+      const s = $('dropSample');
+      if (s) s.addEventListener('click', loadSample);
+    }
+  }
+
+  /* --------------------------------------------------------------- 选中块 */
+  function selectBlock(key) {
+    state.activeKey = key;
+    state.selected = null;
+    state.expanded.clear();
+    renderAll();
+  }
+
+  /* --------------------------------------------------------------- 总渲染 */
+  function renderAll() {
+    const entry = activeEntry();
+    if (!entry) { renderFileList(); renderEmptyWarning(); return; }
+    for (const b of state.blocks) if (!b.block._leaves) indexBlock(b.block);
+    el.emptyState.hidden = true;
+    el.doc.hidden = false;
+    el.printBtn.disabled = false;
+    el.settingsBlock.hidden = false;
+    renderFileList();
+    renderTitleBlock(entry.block);
+    renderMap(entry.block);
+    renderWarnings();
+    renderTabs();
+    renderVars();
+    renderHex();
+    renderStats();
+    updateAlignUI();
+  }
+
+  function renderTitleBlock(block) {
+    const app = block.image.applied;
+    const leaves = block._leaves ? block._leaves.length : 0;
+    const cells = [
+      { l: '数据块', v: block.name, sans: true },
+      { l: '块号', v: block.dbNumber !== null ? 'DB' + block.dbNumber : '—' },
+      { l: '访问方式', v: block.optimized ? '优化' : '非优化', flag: !block.optimized },
+      { l: '长度', v: String(block.sizeBytes), unit: '字节' },
+      { l: '顶层成员', v: String(block.children.length) },
+      { l: '叶子变量', v: String(leaves) },
+      { l: '对齐上限', v: state.align === 'packed' ? '紧凑' : String(state.align), unit: state.align === 'packed' ? '' : '字节' },
+      { l: '起始值', v: String(app.decl + app.begin), unit: '条' }
+    ];
+    let html = cells.map((c) =>
+      '<div class="tb-cell' + (c.flag ? ' flag' : '') + '">' +
+      '<div class="lbl">' + esc(c.l) + '</div>' +
+      '<div class="val' + (c.sans ? ' sans' : '') + '" title="' + esc(c.v) + '">' + esc(c.v) +
+      (c.unit ? '<small>' + esc(c.unit) + '</small>' : '') + '</div></div>'
+    ).join('');
+    if (block.optimized) {
+      html += '<div class="tb-cell est"><div class="lbl">偏移</div><div class="val">估算值</div></div>';
+    }
+    el.titleBlock.innerHTML = html;
+  }
+
+  /* ----------------------------------------------------------------- 地图 */
+  const CAT_CLASS = { bool: 'cat-bool', int: 'cat-int', real: 'cat-real', str: 'cat-str', time: 'cat-time', struct: 'cat-struct', misc: 'cat-misc' };
+
+  function buildBands(block) {
+    const items = [];
+    for (const c of block.children) {
+      const start = Math.floor((c.relBits || 0) / 8);
+      const end = Math.max(start + 1, Math.ceil(((c.relBits || 0) + bitLen(c)) / 8));
+      if (end <= start) continue;
+      items.push({ start: start, end: end, names: [c.name], cat: catOf(c), span: end - start });
+    }
+    items.sort((a, b) => a.start - b.start);
+    const bands = [];
+    for (const it of items) {
+      const last = bands[bands.length - 1];
+      if (last && it.start < last.end) {
+        last.end = Math.max(last.end, it.end);
+        last.names.push(it.name);
+        if (it.span > last.span) { last.span = it.span; last.cat = it.cat; }
+      } else {
+        bands.push(it);
+      }
+    }
+    return bands;
+  }
+
+  function renderMap(block) {
+    if (!block.sizeBytes) { el.mapStrip.innerHTML = ''; el.mapRuler.innerHTML = ''; return; }
+    const size = block.sizeBytes;
+    const bands = buildBands(block);
+
+    el.mapStrip.innerHTML = '<div class="map-cursor" id="mapCursor"></div>';
+    for (const b of bands) {
+      const left = (b.start / size) * 100;
+      const width = Math.max(((b.end - b.start) / size) * 100, 0.35);
+      const seg = document.createElement('div');
+      seg.className = 'seg ' + (CAT_CLASS[b.cat] || 'cat-misc');
+      seg.style.left = left + '%';
+      seg.style.width = Math.max(width - 0.08, 0.2) + '%';
+      seg.dataset.names = b.names.join('|');
+      seg.dataset.start = b.start;
+      seg.dataset.end = b.end;
+      seg.title = b.names.join('、') + '\n+' + b.start + ' … +' + (b.end - 1) + '（' + (b.end - b.start) + ' 字节）';
+      seg.addEventListener('mouseenter', () => {
+        el.mapNote.textContent = b.names.slice(0, 3).join('、') + (b.names.length > 3 ? ' 等 ' + b.names.length + ' 项' : '') +
+          ' · +' + b.start + ' · ' + (b.end - b.start) + ' B';
+      });
+      seg.addEventListener('mouseleave', () => {
+        const sel = currentSelection();
+        el.mapNote.textContent = sel ? sel.note : defaultMapNote(block);
+      });
+      seg.addEventListener('click', () => {
+        const name = b.names[0];
+        const row = state.rows.find((r) => r.path === name);
+        if (row) selectRow(row.path, true);
+      });
+      el.mapStrip.appendChild(seg);
+    }
+
+    // 标尺
+    const step = niceStep(size);
+    let ruler = '';
+    for (let b = 0; b <= size; b += step) {
+      if (b > 0 && b + step > size) {
+        // 末端刻度靠右对齐，避免文字溢出
+        ruler += '<div class="tick end"><span>' + b + '</span></div>';
+        break;
+      }
+      ruler += '<div class="tick" style="left:' + Math.min((b / size) * 100, 99) + '%"><span>' + b + '</span></div>';
+    }
+    if (size % step !== 0 && !ruler.includes('tick end')) {
+      ruler += '<div class="tick end"><span>' + size + '</span></div>';
+    }
+    el.mapRuler.innerHTML = ruler;
+
+    // 图例
+    const used = new Set(bands.map((b) => b.cat));
+    el.mapLegend.innerHTML = Array.from(used).map((c) =>
+      '<span><i class="' + CAT_CLASS[c] + '"></i>' + CAT_LABEL[c] + '</span>').join('');
+
+    el.mapNote.textContent = defaultMapNote(block);
+    el.mapCursor = $('mapCursor');
+    updateMapCursor();
+  }
+
+  function defaultMapNote(block) {
+    return (block.optimized ? '优化访问块 · 偏移为估算 · ' : '非优化块 · ') + block.sizeBytes + ' 字节';
+  }
+
+  function niceStep(size) {
+    const steps = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384];
+    for (const s of steps) {
+      if (size / s <= 9) return s;
+    }
+    return Math.ceil(size / 9);
+  }
+
+  function updateMapCursor() {
+    const entry = activeEntry();
+    const strip = el.mapStrip.querySelector('.map-cursor');
+    if (!entry || !strip) return;
+    const row = state.rows.find((r) => r.path === state.selected);
+    if (!row) { strip.style.display = 'none'; return; }
+    const size = entry.block.sizeBytes;
+    strip.style.display = 'block';
+    strip.style.left = (Math.floor(row.offsetBits / 8) / size * 100) + '%';
+    document.querySelectorAll('.seg.sel').forEach((s) => s.classList.remove('sel'));
+    const seg = Array.from(el.mapStrip.querySelectorAll('.seg')).find((s) =>
+      (s.dataset.names || '').split('|').includes(row.path.split('.')[0].split('[')[0]));
+    if (seg) seg.classList.add('sel');
+  }
+
+  function currentSelection() {
+    const entry = activeEntry();
+    if (!entry || !state.selected) return null;
+    const row = state.rows.find((r) => r.path === state.selected);
+    if (!row) return null;
+    const o = offsetText(row.offsetBits);
+    return { row: row, note: row.path + ' · +' + o.byte + (o.bit ? '.' + o.bit : '') + ' · ' + bitsLabel(row.node) };
+  }
+
+  /* ----------------------------------------------------------------- 告警 */
+  function renderWarnings() {
+    const entry = activeEntry();
+    if (!entry) return;
+    const list = (entry.file.result && entry.file.result.warnings) || [];
+    const blockWarn = entry.block.warnings || [];
+    const all = list.concat(blockWarn);
+    if (!all.length) { el.warnBlock.hidden = true; return; }
+    el.warnBlock.hidden = false;
+    el.warnCount.textContent = all.length;
+    el.warnList.innerHTML = all.slice(0, 40).map((w) =>
+      '<li>' + esc(w.message || w) + (w.line ? '<span class="ln">L' + w.line + '</span>' : '') + '</li>').join('');
+    if (all.length > 40) {
+      el.warnList.innerHTML += '<li>还有 ' + (all.length - 40) + ' 条…</li>';
+    }
+  }
+
+  /* ------------------------------------------------------------------ 行 */
+  function buildRows(block, expanded, query) {
+    const rows = [];
+    const buf = block.image.buffer;
+    const search = (query || '').trim().toLowerCase();
+    const match = (s) => !search || String(s).toLowerCase().indexOf(search) >= 0;
+
+    function decodeAt(node, off) {
+      try { return P.decodeLeaf(node, buf, off); } catch (e) { return '?'; }
+    }
+
+    function summary(node) {
+      if (node.kind === 'array') {
+        const n = node.count;
+        const elb = bitLen(node.elem);
+        const total = Math.ceil(bitLen(node) / 8);
+        return n + ' 项 · ' + total + ' B';
+      }
+      if (node.kind === 'struct' || node.kind === 'group') {
+        return (node.children ? node.children.length : 0) + ' 项 · ' + Math.ceil(bitLen(node) / 8) + ' B';
+      }
+      return '';
+    }
+
+    function walk(node, depth, path, off, name) {
+      const group = isGroup(node);
+      const row = {
+        path: path,
+        depth: depth,
+        name: name,
+        node: node,
+        group: group,
+        expanded: !!search || expanded.has(pathKey(path)),
+        offsetBits: off,
+        typeName: typeLabel(node),
+        init: node.init && node.init.length ? node.init.join(', ') : '',
+        comment: node.comment || '',
+        value: group ? summary(node) : decodeAt(node, off),
+        bits: bitLen(node)
+      };
+      rows.push(row);
+
+      if (!group) return;
+      if (search) {
+        // 搜索模式下全部展开
+      } else if (!row.expanded) {
+        return;
+      }
+
+      if (node.kind === 'array') {
+        const stride = (node.elem && node.elem._sz && node.elem._sz.bits === 1) ? 1 : (node.strideBits || 0);
+        const cap = Math.min(node.count, 500);
+        for (let i = 0; i < cap; i++) {
+          const label = P.indexLabel(node, i);
+          walk(node.elem, depth + 1, path + label, off + i * stride, label);
+        }
+        if (node.count > cap) {
+          rows.push({ path: path + '::more', depth: depth + 1, more: true, text: '数组共 ' + node.count + ' 项，表格只显示前 ' + cap + ' 项（CSV 导出为全部）' });
+        }
+      } else {
+        for (const c of node.children || []) {
+          walk(c, depth + 1, path + '.' + c.name, off + (c.relBits || 0), c.name);
+        }
+      }
+    }
+
+    for (const c of block.children) walk(c, 0, c.name, c.relBits || 0, c.name);
+
+    if (search) {
+      // 只保留匹配的行及其祖先
+      const keep = new Set();
+      for (const r of rows) {
+        if (r.more) continue;
+        const hit = match(r.name) || match(r.path) || match(r.typeName) ||
+          match(r.comment) || match(r.init) || match(String(r.value));
+        if (!hit) continue;
+        let p = r.path;
+        while (p) {
+          keep.add(p);
+          if (p.endsWith(']')) p = p.replace(/\[[^\]]*\]$/, '');
+          else {
+            const i = p.lastIndexOf('.');
+            if (i < 0) break;
+            p = p.slice(0, i);
+          }
+        }
+        keep.add(r.path);
+      }
+      return rows.filter((r) => (r.more ? false : keep.has(r.path)));
+    }
+    return rows;
+  }
+
+  function renderVars() {
+    const entry = activeEntry();
+    if (!entry) return;
+    const block = entry.block;
+    const rows = buildRows(block, state.expanded, state.search);
+    state.rows = rows;
+
+    if (!rows.length) {
+      el.varBody.innerHTML = '<tr><td colspan="8" class="empty-note">没有匹配的变量</td></tr>';
+      return;
+    }
+
+    const html = rows.map((r) => {
+      if (r.more) {
+        return '<tr class="more"><td colspan="8" style="padding-left:' + (14 + r.depth * 14) + 'px">' + esc(r.text) + '</td></tr>';
+      }
+      const o = offsetText(r.offsetBits);
+      const sel = state.selected === r.path ? ' selected' : '';
+      const rootCls = r.depth === 0 ? ' root' : '';
+      const grpCls = r.group ? ' group' : '';
+      const disc = r.group
+        ? '<button class="row-disclosure' + (r.expanded ? ' open' : '') + '" data-toggle="' + esc(r.path) + '" aria-label="展开">' +
+          '<svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2 1l4 3-4 3z" fill="currentColor"/></svg></button>'
+        : '<span class="leaf-dot"><i></i></span>';
+      let vcls = 'val';
+      if (/^TRUE$/.test(String(r.value))) vcls += ' true';
+      else if (/^FALSE$/.test(String(r.value))) vcls += ' false';
+      else if (r.node.kind === 'string' || (r.node.kind === 'elem' && (r.node.elemKey === 'string' || r.node.elemKey === 'wstring'))) vcls += ' str';
+
+      const offsetCell = '<td class="num off" title="S7 地址 ' + esc(s7Address(block, r.node, r.offsetBits)) + '">' +
+        '<span class="' + (block.optimized ? 'est' : '') + '">' + o.text + '</span></td>';
+
+      return '<tr class="' + (rootCls + grpCls + sel).trim() + '" data-path="' + esc(r.path) + '">' +
+        '<td><div class="name-cell" style="padding-left:' + (r.depth * 14) + 'px">' + disc +
+        '<span class="nm" title="' + esc(r.path) + '">' + esc(r.name) + '</span></div></td>' +
+        '<td class="typename' + (r.node.kind === 'unknown' ? ' ref' : '') + '" title="' + esc(r.typeName) + '">' + esc(r.typeName) + '</td>' +
+        offsetCell +
+        '<td class="num">' + (r.node.kind === 'elem' && r.node.elemKey === 'bool' ? (r.offsetBits % 8) : '') + '</td>' +
+        '<td class="num">' + bitsLabel(r.node) + '</td>' +
+        '<td class="init" title="' + esc(r.init) + '">' + (r.init ? esc(r.init) : '<span style="color:#B9C4C0">—</span>') + '</td>' +
+        '<td class="' + vcls + '" title="' + esc(r.value) + '">' + esc(r.value) + '</td>' +
+        '<td class="comment" title="' + esc(r.comment) + '">' + esc(r.comment) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    el.varBody.innerHTML = html;
+    updateMapCursor();
+  }
+
+  /* --------------------------------------------------------------- 选择/交互 */
+  function selectRow(path, fromMap) {
+    state.selected = state.selected === path ? null : path;
+    document.querySelectorAll('#varBody tr.selected').forEach((tr) => tr.classList.remove('selected'));
+    if (state.selected) {
+      const tr = el.varBody.querySelector('tr[data-path="' + cssEscape(state.selected) + '"]');
+      if (tr) {
+        tr.classList.add('selected');
+        if (!fromMap) tr.scrollIntoView({ block: 'nearest' });
+      }
+    }
+    const sel = currentSelection();
+    el.mapNote.textContent = sel ? sel.note : defaultMapNote(activeEntry().block);
+    updateMapCursor();
+    renderHex();
+  }
+
+  function cssEscape(s) {
+    if (window.CSS && CSS.escape) return CSS.escape(s);
+    return String(s).replace(/"/g, '\\"');
+  }
+
+  el.varBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-toggle]');
+    if (btn) {
+      const path = btn.getAttribute('data-toggle');
+      const key = pathKey(path);
+      if (state.expanded.has(key)) state.expanded.delete(key); else state.expanded.add(key);
+      renderVars();
+      return;
+    }
+    const tr = e.target.closest('tr[data-path]');
+    if (!tr) return;
+    const path = tr.getAttribute('data-path');
+    const row = state.rows.find((r) => r.path === path);
+    if (row && row.group && !e.shiftKey) {
+      // 点组行本身：展开/折叠
+      const key = pathKey(path);
+      if (state.expanded.has(key)) state.expanded.delete(key); else state.expanded.add(key);
+      renderVars();
+      const tr2 = el.varBody.querySelector('tr[data-path="' + cssEscape(path) + '"]');
+      if (tr2) tr2.classList.add('selected');
+    }
+    selectRow(path);
+  });
+
+  /* ------------------------------------------------------------------ 搜索 */
+  el.search.addEventListener('input', () => {
+    state.search = el.search.value;
+    renderVars();
+  });
+
+  /* ------------------------------------------------------------------ 标签 */
+  el.tabs.addEventListener('click', (e) => {
+    const b = e.target.closest('.tab');
+    if (!b) return;
+    state.tab = b.dataset.tab;
+    renderTabs();
+    if (state.tab === 'mem') renderHex();
+  });
+
+  function renderTabs() {
+    el.tabs.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === state.tab));
+    el.panelVars.hidden = state.tab !== 'vars';
+    el.panelMem.hidden = state.tab !== 'mem';
+    el.panelStats.hidden = state.tab !== 'stats';
+    el.search.style.visibility = state.tab === 'stats' ? 'hidden' : 'visible';
+  }
+
+  /* -------------------------------------------------------------------- hex */
+  function renderHex() {
+    if (state.tab !== 'mem') return;
+    const entry = activeEntry();
+    if (!entry) return;
+    const block = entry.block;
+    const buf = block.image.buffer;
+    const total = block.sizeBytes;
+
+    if (!total) { el.hexWrap.innerHTML = '<div class="empty-note">这个块没有数据区。</div>'; return; }
+
+    const row = state.selected ? state.rows.find((r) => r.path === state.selected) : null;
+    let selStart = -1, selEnd = -1;
+    if (row) {
+      selStart = Math.floor(row.offsetBits / 8);
+      selEnd = Math.min(total, Math.ceil((row.offsetBits + Math.max(1, row.bits)) / 8));
+    }
+
+    const LIMIT = 16384;
+    const shown = Math.min(total, LIMIT);
+    let html = '<div class="hex-head"><span class="t">原始字节 · 起始值镜像</span>' +
+      '<span class="n">' + (row ? esc(row.path) + ' → +' + selStart + ' … +' + (selEnd - 1) : '点击上面表格的变量可高亮字节范围') + '</span></div>';
+
+    html += '<div class="hex">';
+    for (let off = 0; off < shown; off += 16) {
+      let bytesHtml = '';
+      let ascii = '';
+      for (let i = 0; i < 16; i++) {
+        const p = off + i;
+        if (p >= total) { bytesHtml += '   '; ascii += ' '; continue; }
+        const v = buf[p];
+        const hit = p >= selStart && p < selEnd;
+        bytesHtml += '<b class="' + (hit ? 'hit' : '') + '">' + v.toString(16).toUpperCase().padStart(2, '0') + '</b>' + (i === 7 ? '  ' : ' ');
+        const ch = v >= 32 && v < 127 ? String.fromCharCode(v) : '.';
+        ascii += '<span class="' + (hit ? 'hit' : '') + '">' + (ch === '<' ? '&lt;' : ch === '&' ? '&amp;' : ch) + '</span>';
+      }
+      html += '<div class="ln" data-off="' + off + '"><span class="addr">' + off.toString(16).toUpperCase().padStart(4, '0') + '</span>' +
+        '<span class="bytes">' + bytesHtml + '</span><span class="asc">' + ascii + '</span></div>';
+    }
+    html += '</div>';
+
+    if (total > LIMIT) {
+      html += '<div class="hex-note">块共 ' + total + ' 字节，此处显示前 ' + LIMIT + ' 字节。完整内容可导出 CSV 查看。</div>';
+    }
+    if (block.optimized) {
+      html += '<div class="hex-note">注意：这是优化访问块（S7-1200/1500）。实际运行时 PLC 内部布局由编译器决定，' +
+        '这里的字节排布是按声明顺序重建的起始值镜像，偏移不能用于绝对地址访问。</div>';
+    }
+    el.hexWrap.innerHTML = html;
+
+    el.hexWrap.querySelectorAll('.ln').forEach((ln) => {
+      ln.addEventListener('click', () => {
+        const off = parseInt(ln.dataset.off, 10);
+        for (let p = off; p < off + 16; p++) {
+          const owner = block._byteOwner && block._byteOwner.get(p);
+          if (owner !== undefined) { selectRow(owner); return; }
+        }
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------------ 统计 */
+  function renderStats() {
+    const entry = activeEntry();
+    if (!entry) return;
+    const block = entry.block;
+    const leaves = block._leaves || [];
+
+    const counts = { bool: 0, int: 0, real: 0, str: 0, time: 0, struct: 0, misc: 0 };
+    for (const leaf of leaves) {
+      const c = catOf(leaf.node);
+      counts[c] = (counts[c] || 0) + 1;
+    }
+
+    let structs = 0, arrays = 0, arrayElems = 0, maxDepth = 0, unknown = 0, boolBits = 0;
+
+    (function scan(nodes, depth) {
+      for (const n of nodes) {
+        maxDepth = Math.max(maxDepth, depth);
+        if (n.kind === 'struct') { structs++; scan(n.children || [], depth + 1); }
+        else if (n.kind === 'array') {
+          arrays++;
+          arrayElems += n.count;
+          scan([n.elem], depth + 1);
+        } else if (n.kind === 'unknown') unknown++;
+      }
+    })(block.children, 1);
+    for (const leaf of leaves) if (leaf.node.elemKey === 'bool') boolBits++;
+
+    const top = block.children.map((c) => ({
+      name: c.name, bytes: Math.ceil(bitLen(c) / 8), cat: catOf(c)
+    })).sort((a, b) => b.bytes - a.bytes);
+
+    const maxTop = Math.max(1, ...top.map((t) => t.bytes));
+    const totalCount = leaves.length || 1;
+
+    const statCard =
+      '<div class="stat-card"><h4>块概况</h4><dl class="stat-grid">' +
+      row2('数据块', block.name) +
+      row2('块号', block.dbNumber !== null ? 'DB' + block.dbNumber : '—') +
+      row2('访问方式', block.optimized ? '优化（偏移为估算）' : '非优化') +
+      row2('数据长度', block.sizeBytes + ' 字节') +
+      row2('顶层成员', block.children.length) +
+      row2('叶子变量', leaves.length) +
+      row2('结构体 / 数组', structs + ' / ' + arrays) +
+      row2('数组元素合计', arrayElems) +
+      row2('Bool 位数', boolBits) +
+      row2('最大嵌套深度', maxDepth) +
+      row2('起始值条数', (block.image.applied.decl + block.image.applied.begin)) +
+      (unknown ? row2('未识别类型', unknown) : '') +
+      '</dl></div>';
+
+    const catCard =
+      '<div class="stat-card"><h4>变量类型分布</h4><div class="bars">' +
+      Object.keys(counts).filter((k) => counts[k]).sort((a, b) => counts[b] - counts[a]).map((k) =>
+        '<div class="bar-row"><span class="bname">' + CAT_LABEL[k] + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + (counts[k] / totalCount * 100) + '%"></span></span>' +
+        '<span class="bval">' + counts[k] + '</span></div>').join('') +
+      '</div></div>';
+
+    const topCard =
+      '<div class="stat-card"><h4>顶层成员占用</h4><div class="bars">' +
+      top.slice(0, 10).map((t) =>
+        '<div class="bar-row"><span class="bname" title="' + esc(t.name) + '">' + esc(t.name) + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + (t.bytes / maxTop * 100) + '%"></span></span>' +
+        '<span class="bval">' + t.bytes + ' B</span></div>').join('') +
+      '</div>' + (top.length > 10 ? '<div class="tiny" style="margin-top:10px">另有 ' + (top.length - 10) + ' 个成员未列出</div>' : '') + '</div>';
+
+    el.statsBody.innerHTML = statCard + catCard + topCard;
+  }
+
+  function row2(k, v) { return '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>'; }
+
+  /* --------------------------------------------------------------- 展开按钮 */
+  el.expandBtn.addEventListener('click', () => {
+    const entry = activeEntry();
+    if (!entry) return;
+    let n = 0;
+    (function scan(nodes, prefix) {
+      for (const node of nodes) {
+        if (isGroup(node)) {
+          const p = prefix ? prefix + '.' + node.name : node.name;
+          state.expanded.add(pathKey(p));
+          n++;
+          if (node.kind === 'array') {
+            if (node.elem.kind === 'struct') scan([node.elem], p + '[1]');
+          } else scan(node.children || [], p);
+        }
+      }
+    })(entry.block.children, '');
+    renderVars();
+    if (n > 400) toast('已展开 ' + n + ' 个节点，表格较长');
+  });
+
+  el.collapseBtn.addEventListener('click', () => {
+    state.expanded.clear();
+    renderVars();
+  });
+
+  /* ------------------------------------------------------------------ CSV */
+  function csvCell(v) {
+    const s = String(v === null || v === undefined ? '' : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  el.csvBtn.addEventListener('click', () => {
+    const entry = activeEntry();
+    if (!entry) return;
+    const block = entry.block;
+    const buf = block.image.buffer;
+    const lines = [['名称', '类型', '字节偏移', '位', '长度(字节)', '起始值', '起始值镜像', '注释'].join(',')];
+    let n = 0;
+    const CAP = 50000;
+
+    const walkBase = (node, off, path) => {
+      if (n >= CAP) return;
+      if (isGroup(node)) {
+        if (node.kind === 'array') {
+          const stride = (node.elem._sz && node.elem._sz.bits === 1) ? 1 : (node.strideBits || 0);
+          for (let i = 0; i < node.count; i++) {
+            if (n >= CAP) return;
+            walkBase(node.elem, off + i * stride, path + P.indexLabel(node, i));
+          }
+        } else {
+          for (const c of node.children || []) walkBase(c, off + (c.relBits || 0), path + '.' + c.name);
+        }
+        return;
+      }
+      n++;
+      let val = '';
+      try { val = P.decodeLeaf(node, buf, off); } catch (e) { val = '?'; }
+      lines.push([path, node.typeName || '', Math.floor(off / 8), off % 8,
+        Math.ceil(bitLen(node) / 8), (node.init || []).join(' '), val, node.comment || '']
+        .map(csvCell).join(','));
+    };
+
+    for (const c of block.children) walkBase(c, c.relBits || 0, c.name);
+
+    const csv = '﻿' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (block.name || 'DB') + '_variables.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 400);
+    toast('已导出 ' + (lines.length - 1) + ' 行' + (n >= CAP ? '（已截断到 5 万行）' : ''));
+  });
+
+  /* --------------------------------------------------------------- 渲染辅助 */
+  function indexBlock(block) {
+    const leaves = [];
+    const byteOwner = new Map();
+    for (const c of block.children) {
+      P.walkLeaves(c, c.relBits || 0, c.name, (node, off, path) => {
+        leaves.push({ node: node, offsetBits: off, path: path });
+        const start = Math.floor(off / 8);
+        const end = Math.ceil((off + Math.max(1, bitLen(node))) / 8);
+        for (let b = start; b < end; b++) if (!byteOwner.has(b)) byteOwner.set(b, path);
+      });
+    }
+    block._leaves = leaves;
+    block._byteOwner = byteOwner;
+  }
+
+  /* --------------------------------------------------------------- 样例 */
+  const SAMPLES = [
+    {
+      name: 'DB_Pallet.db',
+      text: [
+        'DATA_BLOCK "DB_Pallet"',
+        "{ S7_Optimized_Access := 'FALSE' }",
+        'VERSION : 0.1',
+        'NON_RETAIN',
+        '   VAR',
+        '      Ready : Bool;   // 就绪',
+        '      Fault : Bool;   // 故障',
+        '      Mode : Int := 2;   // 运行模式',
+        '      Speed : Real := 12.5;   // 速度 m/min',
+        "      Name : String[20] := 'Conveyor-01';   // 设备名",
+        '      Count : DInt;   // 计数',
+        '      Tags : Array[1..4] of Bool;',
+        '      Temps : Array[0..2] of Real := 1.0, 2.0, 3.0;',
+        '      Motor : Struct',
+        '         Run : Bool;   // 运行中',
+        '         Current : Real := 4.25;   // 电流 A',
+        '         ErrCode : Word;',
+        '      END_STRUCT;',
+        '   END_VAR',
+        'BEGIN',
+        '   "DB_Pallet".Count := 100;',
+        'END_DATA_BLOCK'
+      ].join('\n')
+    },
+    {
+      name: 'DB12_AGV.db',
+      text: [
+        'DATA_BLOCK DB 12',
+        'TITLE =AGV station data',
+        'VERSION : 0.1',
+        '',
+        '  STRUCT',
+        '   Station : ARRAY [1..8] OF',
+        '      STRUCT',
+        '         Occupied : BOOL ;	(* 有货 *)',
+        '         PalletNo : DINT ;	(* 托盘号 *)',
+        '         Height : REAL ;	(* 高度 mm *)',
+        '      END_STRUCT ;',
+        '   Total : INT ;',
+        '   UpdateTime : DATE_AND_TIME ;',
+        '   Code : ARRAY [0..1, 1..3] OF INT ;',
+        '  END_STRUCT ;',
+        '',
+        'BEGIN',
+        '',
+        'END_DATA_BLOCK'
+      ].join('\n')
+    },
+    {
+      name: 'UDT_Motor.udt',
+      text: [
+        'TYPE "UDT_Motor"',
+        'VERSION : 0.1',
+        '   STRUCT',
+        '      Run : Bool;   // 运行中',
+        '      Current : Real;   // 电流 A',
+        '      ErrCode : Word;   // 故障码',
+        '   END_STRUCT;',
+        'END_TYPE'
+      ].join('\n')
+    },
+    {
+      name: 'DB_Line.db',
+      text: [
+        'DATA_BLOCK "DB_Line"',
+        "{ S7_Optimized_Access := 'FALSE' }",
+        'VERSION : 0.1',
+        '   VAR',
+        '      Motors : Array[1..3] of "UDT_Motor";   // 三台电机',
+        '      Total : Int;   // 总数',
+        '      StartTime : DTL;',
+        '   END_VAR',
+        'BEGIN',
+        '   "DB_Line".Motors[2].Current := 6.5;',
+        '   "DB_Line".Motors[1].Run := TRUE;',
+        'END_DATA_BLOCK'
+      ].join('\n')
+    }
+  ];
+
+  function loadSample() {
+    state.files = [];
+    state.expanded.clear();
+    for (const s of SAMPLES) {
+      state.files.push({
+        id: 'f' + (++uid), name: s.name, size: s.text.length, text: s.text,
+        result: null, blocks: [], binary: false, error: ''
+      });
+    }
+    parseAll();
+    toast('示例已载入：4 个文件 / 4 个块');
+  }
+
+  /* --------------------------------------------------------------- 初始化 */
+  /* 事件绑定 */
+  el.openBtn.addEventListener('click', () => el.fileInput.click());
+  const dropOpen = $('dropOpen');
+  if (dropOpen) dropOpen.addEventListener('click', () => el.fileInput.click());
+  const dropSample = $('dropSample');
+  if (dropSample) dropSample.addEventListener('click', loadSample);
+  el.sampleBtn.addEventListener('click', loadSample);
+  el.fileInput.addEventListener('change', (e) => { addFiles(e.target.files); el.fileInput.value = ''; });
+  el.printBtn.addEventListener('click', () => window.print());
+
+  let dragDepth = 0;
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragDepth++;
+    document.body.classList.add('dragging');
+  });
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('dragleave', (e) => {
+    if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); }
+  });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove('dragging');
+    if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
+
+  el.alignSelect.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-align]');
+    if (!b) return;
+    const v = b.dataset.align;
+    state.align = v === 'packed' ? 'packed' : parseInt(v, 10);
+    if (state.files.length) {
+      parseAll();
+      toast('已按' + (v === 'packed' ? '紧凑' : v + ' 字节对齐') + '重新排布');
+    }
+    updateAlignUI();
+  });
+
+  function updateAlignUI() {
+    const val = String(state.align);
+    el.alignSelect.querySelectorAll('[data-align]').forEach((b) => {
+      const on = b.dataset.align === val;
+      b.style.background = on ? 'var(--accent)' : 'transparent';
+      b.style.color = on ? '#fff' : 'var(--ink)';
+      b.style.fontWeight = on ? '600' : '400';
+    });
+    el.alignHint.textContent = state.align === 'packed'
+      ? '无填充，Bool 仍按位打包'
+      : '结构体按最大成员对齐，上限 ' + state.align + ' 字节';
+  }
+
+  updateAlignUI();
+
+  // 调试 / 自动化用：允许外部载入示例
+  window.__dbLoadSample = loadSample;
+  window.__dbSelect = selectBlock;
+  window.__dbRenderVars = renderVars;
+  window.__dbState = state;
+})();
+
+</script>
+</body>
+</html>
